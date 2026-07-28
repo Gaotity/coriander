@@ -1,0 +1,66 @@
+# PROTOTYPE — Ticket 01 platform validation spike. Throwaway; never merge to main.
+name: PlatformSpike
+options:
+  bundleIdPrefix: com.gaotity.coriander.spike
+  deploymentTarget: "17.0"
+targets:
+  SpikeApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Shared
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleName: SpikeApp
+        CFBundleDisplayName: Spike
+        UILaunchScreen_Generation: YES
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+    entitlements:
+      path: App/SpikeApp.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.gaotity.coriander.spike
+    dependencies:
+      - target: SpikeKeyboard
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander.spike
+        CODE_SIGN_STYLE: Automatic
+  SpikeKeyboard:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Keyboard
+      - path: Shared
+    info:
+      path: Keyboard/Info.plist
+      properties:
+        CFBundleName: SpikeKeyboard
+        CFBundleDisplayName: SpikeKeyboard
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.keyboard-service
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).KeyboardViewController"
+          NSExtensionAttributes:
+            IsASCIICapable: NO
+            PrefersRightToLeft: NO
+            PrimaryLanguage: en-US
+            RequestsOpenAccess: YES
+    entitlements:
+      path: Keyboard/SpikeKeyboard.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.gaotity.coriander.spike
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander.spike.keyboard
+        CODE_SIGN_STYLE: Automatic
+schemes:
+  SpikeApp:
+    build:
+      targets:
+        SpikeApp: all
+        SpikeKeyboard: all
+    run:
+      config: Debug
