@@ -1,5 +1,7 @@
 # Coriander
 
+**English** | [简体中文](README.zh-CN.md)
+
 An early-stage, local-first Rime keyboard for iOS and iPadOS.
 
 > **Status:** Pre-alpha — there is currently no installable build.
