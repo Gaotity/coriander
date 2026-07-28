@@ -5,12 +5,11 @@ import UIKit
 /// Full Access has no query API — the write probe is the signal: per Hamster's
 /// production evidence, group-container writes fail without Full Access.
 final class KeyboardViewController: UIInputViewController {
-    private let initTime = Date()
     private var statusLabel: UILabel!
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        let coldStartMs = Date().timeIntervalSince(ProbeKit.launchTimestamp) * 1000
+        let coldStartMs = Date().timeIntervalSince(ProbeKit.processStartTime()) * 1000
 
         view.translatesAutoresizingMaskIntoConstraints = false
         let stack = UIStackView()

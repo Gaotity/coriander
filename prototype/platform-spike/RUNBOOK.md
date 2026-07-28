@@ -43,6 +43,8 @@ the `prototype/01-platform-spike` branch is checked out.
 - Step 3 outputs (app-side probes, seed benchmark numbers).
 - Steps 5 and 8 outputs (the two keyboard matrices, cold start, memory).
 - Device model and iOS version.
+- **Account-type decision**: individual vs organization (organization needs a
+  D-U-N-S number, which can add weeks — see issue #24 for why this matters).
 
 ## Notes
 

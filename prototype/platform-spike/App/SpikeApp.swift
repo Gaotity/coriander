@@ -25,7 +25,10 @@ struct ContentView: View {
                     .padding()
             }
             .navigationTitle("Spike")
-            .onAppear { runAppProbes() }
+            .onAppear {
+                runAppProbes()
+                runSeedBenchmark()
+            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu("Probes") {
@@ -41,7 +44,9 @@ struct ContentView: View {
 
     private func runAppProbes() {
         report("== app-side probes ==")
+        report(String(format: "process uptime: %.2fs", Date().timeIntervalSince(ProbeKit.processStartTime())))
         report(String(format: "resident memory: %.1f MB", ProbeKit.residentMemoryMB()))
+        report(ProbeKit.probeRimeDirectory().description)
         let write = ProbeKit.probeGroupWrite()
         report(write.description)
         report(ProbeKit.probeGroupRead().description)

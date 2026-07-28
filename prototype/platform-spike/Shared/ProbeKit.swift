@@ -5,7 +5,18 @@ import Foundation
 // the keyboard extension targets.
 enum ProbeKit {
     static let groupID = "group.com.gaotity.coriander.spike"
-    static let launchTimestamp = Date()
+
+    /// Wall-clock time the current process was started, via the kernel.
+    /// (A `static let` timestamp would be lazily initialized at first access —
+    /// which is the measurement point itself — so we ask the kernel instead.)
+    static func processStartTime() -> Date {
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.size
+        sysctl(&mib, u_int(mib.count), &info, &size, nil, 0)
+        let started = info.kp_proc.p_starttime
+        return Date(timeIntervalSince1970: TimeInterval(started.tv_sec) + TimeInterval(started.tv_usec) / 1_000_000)
+    }
 
     static var groupURL: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID)
@@ -92,25 +103,47 @@ enum ProbeKit {
         return text
     }
 
-    /// Simulate the baseline seed: write ~40 MB across many small files into
-    /// the group container, then delete. Returns duration in seconds.
+    /// Create the Rime Directory (the App Group subdirectory all Rime data
+    /// will live in) and report. The ticket asks for it to exist.
+    static func probeRimeDirectory() -> ProbeResult {
+        guard let dir = groupURL else {
+            return ProbeResult(name: "rime-directory", ok: false, detail: "containerURL returned nil")
+        }
+        let rime = dir.appendingPathComponent("rime")
+        do {
+            try FileManager.default.createDirectory(at: rime, withIntermediateDirectories: true)
+            return ProbeResult(name: "rime-directory", ok: true, detail: rime.path)
+        } catch {
+            return ProbeResult(name: "rime-directory", ok: false, detail: error.localizedDescription)
+        }
+    }
+
+    /// Simulate the baseline seed: stage ~40 MB of small files in a temp
+    /// source dir, then COPY them into the group container (read + write),
+    /// then delete both. Returns duration of the copy phase.
     static func seedBenchmark(totalMB: Int = 40, fileCount: Int = 200) -> ProbeResult {
         guard let dir = groupURL else {
             return ProbeResult(name: "seed-benchmark", ok: false, detail: "containerURL returned nil")
         }
+        let fm = FileManager.default
+        let sourceDir = fm.temporaryDirectory.appendingPathComponent("seed-src-\(UUID().uuidString)")
         let seedDir = dir.appendingPathComponent("seed-benchmark-tmp")
         let chunk = Data((0..<(totalMB * 1_048_576 / fileCount)).map { UInt8($0 & 0xFF) })
-        let start = Date()
         do {
-            try FileManager.default.createDirectory(at: seedDir, withIntermediateDirectories: true)
+            try fm.createDirectory(at: sourceDir, withIntermediateDirectories: true)
             for i in 0..<fileCount {
-                try chunk.write(to: seedDir.appendingPathComponent("f\(i).bin"))
+                try chunk.write(to: sourceDir.appendingPathComponent("f\(i).bin"))
             }
+            let start = Date()
+            try fm.copyItem(at: sourceDir, to: seedDir)
             let duration = Date().timeIntervalSince(start)
-            try FileManager.default.removeItem(at: seedDir)
-            let detail = String(format: "%d MB / %d files in %.2fs (%.1f MB/s)", totalMB, fileCount, duration, Double(totalMB) / duration)
+            try fm.removeItem(at: seedDir)
+            try fm.removeItem(at: sourceDir)
+            let detail = String(format: "copied %d MB / %d files in %.2fs (%.1f MB/s)", totalMB, fileCount, duration, Double(totalMB) / duration)
             return ProbeResult(name: "seed-benchmark", ok: true, detail: detail)
         } catch {
+            try? fm.removeItem(at: sourceDir)
+            try? fm.removeItem(at: seedDir)
             return ProbeResult(name: "seed-benchmark", ok: false, detail: error.localizedDescription)
         }
     }
