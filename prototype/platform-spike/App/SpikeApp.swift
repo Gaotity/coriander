@@ -25,6 +25,7 @@ struct ContentView: View {
                     .padding()
             }
             .navigationTitle("Spike")
+            .onAppear { runAppProbes() }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu("Probes") {
