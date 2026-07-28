@@ -12,3 +12,4 @@ Both the Container App and the Keyboard Extension embed their own Engine (librim
 - librime is linked into two binaries, increasing app size.
 - Schema changes made in the Container App become visible in the keyboard only on the next Session.
 - Any future feature running an Engine in the Container App (e.g. input preview) must respect the single-writer rule for the User Dictionary.
+- Persisting the User Dictionary from the keyboard requires Full Access; without it the keyboard reads the Rime Directory read-only and learning is disabled (see ADR-0003).

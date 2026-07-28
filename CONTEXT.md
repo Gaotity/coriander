@@ -17,7 +17,7 @@ _Avoid_: keyboard app, input extension
 ### Privacy
 
 **Full Access**:
-The iOS keyboard permission (`RequestsOpenAccess`) that enables network access and other capabilities. The Keyboard Extension never requests it; neither process uses the network in the MVP.
+The iOS keyboard permission (`RequestsOpenAccess`) that expands the keyboard sandbox — without it, the Rime Directory is read-only to the keyboard. The Keyboard Extension requests it solely for local write access to the User Dictionary; basic input works without it. Neither process ever uses the network, with or without it.
 _Avoid_: open access
 
 ### Keyboard UI
@@ -77,9 +77,9 @@ A Container App-only action: merge external Rime files into the Config Folder, v
 _Avoid_: install, add schema
 
 **User Dictionary**:
-The per-user vocabulary librime accumulates from input (`*.userdb`). The Keyboard Extension is its sole writer during input; only one Engine holds it open at a time.
+The per-user vocabulary librime accumulates from input (`*.userdb`). The Keyboard Extension is its sole writer during input; only one Engine holds it open at a time. Persisting it requires Full Access; without it, learning is disabled and input continues read-only.
 _Avoid_: user lexicon, learned words
 
 **Rime Directory**:
-The single directory in the App Group shared container holding all Rime data consumed by the Engines — baseline files seeded by the Container App, configuration synced from the Config Folder, and the User Dictionary. Both processes point their Engine at it.
+The single directory in the App Group shared container holding all Rime data consumed by the Engines — baseline files seeded by the Container App, configuration synced from the Config Folder, and the User Dictionary. Both processes point their Engine at it; without Full Access the Keyboard Extension's access is read-only.
 _Avoid_: data folder, shared container
