@@ -28,6 +28,18 @@ cp "$S/rime-prelude/default.yaml" "$S/rime-prelude/key_bindings.yaml" \
 cp "$S"/rime-luna-pinyin/*.yaml "$DEST/"
 cp "$S/rime-essay/essay.txt" "$DEST/"
 
+# prelude's default.yaml lists schemas we don't ship; patch the list down
+# to the vendored set via an idiomatic default.custom.yaml overlay.
+cat > "$DEST/default.custom.yaml" <<'EOF'
+patch:
+  schema_list:
+    - schema: luna_pinyin
+    - schema: luna_pinyin_simp
+    - schema: luna_pinyin_fluency
+    - schema: luna_pinyin_tw
+    - schema: luna_quanpin
+EOF
+
 # --- 2. host-build opencc tools and generate .ocd2 dictionaries ---
 # The iOS deps build sed-disables opencc's tools/ and data/ subdirectories
 # in the submodule; restore them for the host build (the iOS script
