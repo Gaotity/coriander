@@ -1,0 +1,33 @@
+name: Coriander
+options:
+  bundleIdPrefix: com.gaotity
+  deploymentTarget: "16.0"
+targets:
+  Coriander:
+    type: application
+    platform: iOS
+    sources:
+      - path: src/App
+    info:
+      path: src/App/Info.plist
+      properties:
+        CFBundleName: Coriander
+        CFBundleDisplayName: Coriander
+        UILaunchScreen_Generation: YES
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_INCLUDE_PATHS[sdk=iphoneos*]: "$(inherited) $(SRCROOT)/.scratch/librime-deps/Rime.xcframework/ios-arm64/Headers"
+        SWIFT_INCLUDE_PATHS[sdk=iphonesimulator*]: "$(inherited) $(SRCROOT)/.scratch/librime-deps/Rime.xcframework/ios-arm64_x86_64-simulator/Headers"
+        LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: "$(inherited) $(SRCROOT)/.scratch/librime-deps/Rime.xcframework/ios-arm64"
+        LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: "$(inherited) $(SRCROOT)/.scratch/librime-deps/Rime.xcframework/ios-arm64_x86_64-simulator"
+        OTHER_LDFLAGS: "$(inherited) -lrime-combined -lc++"
+schemes:
+  Coriander:
+    build:
+      targets:
+        Coriander: all
+    run:
+      config: Debug
