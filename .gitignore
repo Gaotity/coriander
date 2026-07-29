@@ -1,3 +1,4 @@
 .scratch/
 Coriander.xcodeproj/
 src/App/Info.plist
+tests/EngineTests/Info.plist

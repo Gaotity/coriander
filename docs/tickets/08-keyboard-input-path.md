@@ -6,7 +6,7 @@
 
 ## What to build
 
-The end-to-end tracer bullet: the Engine runs read-only inside the Keyboard Extension — keystrokes produce an inline Composition, a candidate bar shows Candidates, and selection commits into the host app. Includes the globe (next-keyboard) key required by App Store guideline 4.4.1.
+The end-to-end tracer bullet: the Engine runs read-only inside the Keyboard Extension — keystrokes produce an inline Composition, a candidate bar shows Candidates, and selection commits into the host app. Includes the globe (next-keyboard) key required by App Store guideline 4.4.1. The extension target gains `src/Engine` sources here, and ticket 05's measurement harness inside it is retired onto the Engine + `RimeDirectory` (including `RimeMeter`'s duplicated path constants).
 
 ## Acceptance criteria
 
