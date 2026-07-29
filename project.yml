@@ -1,13 +1,14 @@
 name: Coriander
 options:
   bundleIdPrefix: com.gaotity
-  deploymentTarget: "16.0"
 targets:
   Coriander:
     type: application
     platform: iOS
+    deploymentTarget: "16.0"
     sources:
       - path: src/App
+      - path: src/Shared
       - path: vendor/rime-baseline
         type: folder
     info:
@@ -17,9 +18,15 @@ targets:
         CFBundleDisplayName: Coriander
         UILaunchScreen_Generation: YES
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+    entitlements:
+      path: src/App/Coriander.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.gaotity.coriander
+    dependencies:
+      - target: CorianderKeyboard
     settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander
+      base: &rimeSettings
         CODE_SIGN_STYLE: Automatic
         RIME_XCF: "$(SRCROOT)/.scratch/librime-deps/Rime.xcframework"
         SWIFT_INCLUDE_PATHS[sdk=iphoneos*]: "$(inherited) $(RIME_XCF)/ios-arm64/Headers"
@@ -27,10 +34,41 @@ targets:
         LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: "$(inherited) $(RIME_XCF)/ios-arm64"
         LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: "$(inherited) $(RIME_XCF)/ios-arm64_x86_64-simulator"
         OTHER_LDFLAGS: "$(inherited) -lrime-combined -lc++"
+        PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander
+  CorianderKeyboard:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: src/Keyboard
+      - path: src/Shared
+    info:
+      path: src/Keyboard/Info.plist
+      properties:
+        CFBundleName: CorianderKeyboard
+        CFBundleDisplayName: Coriander
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.keyboard-service
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).KeyboardViewController"
+          NSExtensionAttributes:
+            IsASCIICapable: NO
+            PrefersRightToLeft: NO
+            PrimaryLanguage: zh-Hans
+            RequestsOpenAccess: YES
+    entitlements:
+      path: src/Keyboard/CorianderKeyboard.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.gaotity.coriander
+    settings:
+      base:
+        << : *rimeSettings
+        PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander.keyboard
 schemes:
   Coriander:
     build:
       targets:
         Coriander: all
+        CorianderKeyboard: all
     run:
       config: Debug

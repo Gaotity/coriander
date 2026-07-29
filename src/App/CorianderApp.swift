@@ -9,20 +9,47 @@ struct CorianderApp: App {
 }
 
 struct ContentView: View {
-    @State private var result = "running Rime smoke…"
+    @State private var result = ""
     @State private var didRun = false
+    @State private var preparing = false
 
     var body: some View {
-        ScrollView {
-            Text(result)
-                .font(.system(.footnote, design: .monospaced))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
+        NavigationStack {
+            ScrollView {
+                Text(result)
+                    .font(.system(.footnote, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
+            .navigationTitle("Coriander")
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(preparing ? "Preparing…" : "Prepare Rime data") { prepare() }
+                        .disabled(preparing)
+                }
+            }
+            .onAppear {
+                guard !didRun else { return }  // finalize→re-initialize is not a safe cycle
+                didRun = true
+                result = RimeSmoke.run()
+                prepare()  // auto-run for headless verification; idempotent by design
+            }
         }
-        .onAppear {
-            guard !didRun else { return }  // finalize→re-initialize is not a safe cycle
-            didRun = true
-            result = RimeSmoke.run()
+    }
+
+    private func report(_ line: String) {
+        result += line + "\n"
+        NSLog("[RimePrepare] %@", line)
+    }
+
+    private func prepare() {
+        preparing = true
+        report("== prepare (seed + deploy) ==")
+        DispatchQueue.global(qos: .userInitiated).async {
+            RimePrepare.run { line in
+                DispatchQueue.main.async { report(line) }
+            }
+            DispatchQueue.main.async { preparing = false }
         }
     }
 }
