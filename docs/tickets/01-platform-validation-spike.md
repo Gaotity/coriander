@@ -2,7 +2,7 @@
 
 **Parent spec:** [docs/spec/mvp.md](../spec/mvp.md)
 **Blocked by:** None — can start immediately.
-**Status:** in-progress (agent half done; awaiting human device run)
+**Status:** done
 
 ## What to build
 
@@ -10,17 +10,21 @@ Minimal Container App + Keyboard Extension targets with an App Group wired and t
 
 ## Acceptance criteria
 
-- [x] Project skeleton (app + keyboard extension) builds and runs (simulator verified; device pending human run)
-- [ ] App Groups free-vs-paid answer recorded with evidence (device)
-- [ ] App Group read/write matrix with/without Full Access recorded (device)
-- [ ] Empty-extension memory + cold-start numbers recorded (device)
-- [ ] Dummy seed-copy duration recorded (device)
-- [ ] Account-type decision (individual vs org) recorded
-- [x] Harness pushed to a prototype/ branch
+- [x] Project skeleton (app + keyboard extension) builds and runs — simulator and device (iPhone 15 Pro Max, iOS 18.7.3)
+- [x] App Groups free-vs-paid answer recorded with evidence — **free Personal Team works on-device** (no provisioning error; full read/write round-trip in the group container)
+- [x] App Group read/write matrix with/without Full Access recorded — **FA off: read OK / write FAIL (permission denied); FA on: read OK / write OK**
+- [x] Empty-extension memory + cold-start numbers recorded — memory 63.4 MB (2nd launch) / 82.2 MB (first debug-attached launch); cold start **235 ms** (2nd launch, process init → viewDidLoad) / 17211 ms (first debug launch — noise, ignore)
+- [x] Dummy seed-copy duration recorded — **40 MB / 200 files in 0.03 s (~1.5 GB/s)**; app-side resident memory 84.4 MB
+- [x] Account-type decision recorded — **individual** (org would need D-U-N-S, weeks; this is a personal project)
+- [x] Harness pushed to a prototype/ branch — `prototype/01-platform-spike` (runbook: `prototype/platform-spike/RUNBOOK.md`)
 
-## Results so far
+## Results
 
-- Harness + runbook: `prototype/platform-spike/` on branch `prototype/01-platform-spike` (commits 183c8c0..d468ad2). Runbook: `prototype/platform-spike/RUNBOOK.md`.
-- Simulator (plumbing only): group read/write OK with simulated signing; **nil container URL with `CODE_SIGNING_ALLOWED=NO`** — App Group needs valid provisioning even on simulator. Seed benchmark copy: 40 MB / 200 files in 0.03 s (host SSD, meaningless for device).
-- Code review (two axes) done; cold-start probe fixed to use kernel process start time (`sysctl kinfo_proc`).
-- Remaining: human runs RUNBOOK.md steps A–D on a paired device and posts numbers here.
+Device session 2026-07-29, iPhone 15 Pro Max, iOS 18.7.3, free Personal Team signing.
+
+- **App Groups is NOT paywalled.** Everything below ran on a free Personal Team with no provisioning errors. The paid program is needed only for TestFlight/App Store (ticket 19/20).
+- **The ADR-0003 tiered model is validated on hardware.** Without Full Access the keyboard reads the shared container but cannot write it (permission denied); with Full Access it reads and writes. Matches Apple's App Extension Programming Guide wording and Hamster's production evidence. Basic typing (read-only) never needs Full Access; persisting the User Dictionary does.
+- **Empty-extension memory baseline is higher than folklore, and so is the ceiling.** An empty extension (label + button) sits at ~63 MB resident on this device without being jetsam-killed — the "~30-60 MB keyboard limit" folklore is stale on modern iOS/hardware. Precise jetsam threshold + librime-loaded footprint = ticket 05.
+- **Seed copy is a non-issue.** ~1.5 GB/s means first-launch UX is dominated by Deploy, not file copying (informs ticket 06's prebuilt-vs-deploy-on-seed decision).
+- Simulator vs device discrepancy confirmed for the record: simulator needed valid provisioning for the group container too, but its Full Access enforcement is untrustworthy — only device numbers above count.
+- Earlier agent-side findings (simulator plumbing, cold-start probe fix via `sysctl kinfo_proc`) are in the git history of `prototype/01-platform-spike` and PR discussion of #26–#32 era.
