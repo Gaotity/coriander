@@ -35,6 +35,20 @@ The first usable version is intended to:
 
 There are no binaries, TestFlight builds, or App Store releases yet. The currently intended distribution path is TestFlight testing followed by an App Store release, without a committed release date.
 
+## Building from source
+
+Requirements: Xcode (with iOS platform support), [XcodeGen](https://github.com/yonaskolb/XcodeGen), CMake and Ninja (`brew install xcodegen cmake ninja`).
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer  # if xcode-select points elsewhere
+scripts/librime/fetch.sh        # clone pinned librime + submodules into .scratch
+scripts/librime/build-deps.sh   # cross-compile third-party deps (3 slices)
+scripts/librime/build-librime.sh # assemble Rime.xcframework
+xcodegen generate               # regenerate Coriander.xcodeproj from project.yml
+```
+
+Then open `Coriander.xcodeproj` or build with `xcodebuild -scheme Coriander`. Build artifacts live under `.scratch/` (gitignored); `Coriander.xcodeproj` is generated from `project.yml` and never committed.
+
 ## Contributing
 
 Issues, design feedback, and use-case discussions are welcome. Please [open an issue](https://github.com/Gaotity/coriander/issues) to participate.

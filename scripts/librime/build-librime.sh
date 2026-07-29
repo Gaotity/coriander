@@ -48,9 +48,15 @@ for slice in "${SLICES[@]}"; do
 
   log "merge static libs → $name"
   mkdir -p "$BUILD/$name/merged"
+  # NOTE: rime-static's OUTPUT_NAME is "rime" (lib/librime.a), and macOS
+  # libtool only *warns* on missing inputs — so verify symbols afterwards.
   libtool -static -o "$BUILD/$name/merged/librime-combined.a" \
-    "$BUILD/$name/lib/librime-static.a" \
+    "$BUILD/$name/lib/librime.a" \
     $(for lib in "${DEP_LIBS[@]}"; do echo "$DEPS/$name/lib/$lib"; done)
+  if ! nm "$BUILD/$name/merged/librime-combined.a" | grep 'T _rime_get_api' >/dev/null 2>&1; then
+    echo "FATAL: merged archive for $name lacks rime symbols" >&2
+    exit 1
+  fi
 done
 
 # --- 2. fat simulator lib + XCFramework ---
