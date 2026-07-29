@@ -9,6 +9,7 @@ targets:
     sources:
       - path: src/App
       - path: src/Shared
+      - path: src/Engine
       - path: vendor/rime-baseline
         type: folder
     info:
@@ -64,11 +65,33 @@ targets:
       base:
         << : *rimeSettings
         PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander.keyboard
+  CorianderEngineTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: src/Engine
+      - path: tests/EngineTests
+      - path: vendor/rime-baseline
+        type: folder
+    info:
+      path: tests/EngineTests/Info.plist
+      properties:
+        CFBundleName: CorianderEngineTests
+    settings:
+      base:
+        << : *rimeSettings
+        PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander.engine-tests
 schemes:
   Coriander:
     build:
       targets:
         Coriander: all
         CorianderKeyboard: all
+        CorianderEngineTests: [test]
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - CorianderEngineTests
