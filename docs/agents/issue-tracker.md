@@ -1,45 +1,52 @@
-# Issue tracker: GitHub
+# Issue tracker: local docs tickets
 
-Issues and PRDs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+Internal tickets (specs, implementation tickets) live in the repo as Markdown files, not on GitHub.
 
-## Conventions
+## Layout
 
-- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
-- **Read an issue**: `gh issue view <number> --comments`, filtering comments by `jq` and also fetching labels.
-- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
-- **Comment on an issue**: `gh issue comment <number> --body "..."`
-- **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
-- **Close**: `gh issue close <number> --comment "..."`
+- **Spec**: `docs/spec/<slug>.md`
+- **Tickets**: `docs/tickets/<NN>-<slug>.md`, numbered from `01` in dependency order (blockers first), one ticket per file.
 
-Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
+Ticket file template:
 
-## Pull requests as a triage surface
+```md
+# <NN> — <title>
 
-**PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
+**Parent spec:** [docs/spec/<slug>.md](../spec/<slug>.md)
+**Blocked by:** <numbers of gating tickets, or "None — can start immediately">
+**Status:** ready-for-agent | in-progress | done
 
-When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
+## What to build
+...
 
-- **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
-- **List external PRs for triage**: `authorAssociation` is not a `gh pr list --json` field, so query via GraphQL — `gh api graphql -F owner=<owner> -F repo=<repo> -f query='query($owner: String!, $repo: String!) { repository(owner: $owner, name: $repo) { pullRequests(states: OPEN, first: 50) { nodes { number title body author { login } authorAssociation labels(first: 20) { nodes { name } } comments(first: 50) { nodes { body } } } } } }'` — then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIMER`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
-- **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
+## Acceptance criteria
+- [ ] ...
 
-GitHub shares one number space across issues and PRs, so a bare `#42` may be either — resolve with `gh pr view 42` and fall back to `gh issue view 42`.
+## Results
+(filled in as work lands — measurements, decisions, pointers to branches)
+```
 
-## When a skill says "publish to the issue tracker"
+## Operations
 
-Create a GitHub issue.
+- **Create**: write a new file with the next free number, dependencies first.
+- **Read / list**: read the files directly; the **frontier** is any ticket whose blockers are all `done`.
+- **Update**: edit the file — status, results, decisions. Commit alongside the work.
+- **Close**: mark `Status: done` once every acceptance criterion is checked.
 
-## When a skill says "fetch the relevant ticket"
+## Blocking
 
-Run `gh issue view <number> --comments`.
+Blocking edges are the `Blocked by:` lines in each ticket header. A ticket is unblocked when every ticket it lists is `done`. Work the frontier, blockers first.
 
-## Wayfinding operations
+## GitHub's remaining role
 
-Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
+GitHub issues are now **only the external inbox** — bug reports and requests from outside. They run through the triage labels in `docs/agents/triage-labels.md` (`/triage`, `/qa`); when one is accepted, convert it into a local ticket and close the GitHub issue with a pointer to the file.
 
-- **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
-- **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
-- **Blocking**: GitHub's **native issue dependencies** — the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only — the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
-- **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
-- **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+PRs, reviews, and releases stay on GitHub as before — see the workflow rules in `AGENTS.md` (branch, `gh pr create --assignee @me`, `codex-pr-finalize`, review triggers).
+
+`gh` CLI usage for that external surface:
+
+- **Create an issue**: `gh issue create --title "..." --body "..."` (heredoc for multi-line).
+- **Read**: `gh issue view <number> --comments`; **comment**: `gh issue comment <number> --body "..."`
+- **Label**: `gh issue edit <number> --add-label "..."`; **close**: `gh issue close <number> --comment "..."`
+- Infer the repo from `git remote -v`.
+- The active `gh` account may not own this repo — use `GH_TOKEN=$(gh auth token --user Gaotity) gh ...` for writes on `Gaotity/coriander`.

@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues and PRDs live as GitHub issues, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Internal tickets are local Markdown files: `docs/spec/` for specs, `docs/tickets/<NN>-<slug>.md` for tickets with `Blocked by:` edges. GitHub issues are only the external inbox. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
