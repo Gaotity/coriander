@@ -10,6 +10,7 @@ struct CorianderApp: App {
 
 struct ContentView: View {
     @State private var result = "running Rime smoke…"
+    @State private var didRun = false
 
     var body: some View {
         ScrollView {
@@ -18,7 +19,11 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
         }
-        .onAppear { result = RimeSmoke.run() }
+        .onAppear {
+            guard !didRun else { return }  // finalize→re-initialize is not a safe cycle
+            didRun = true
+            result = RimeSmoke.run()
+        }
     }
 }
 
@@ -49,24 +54,24 @@ enum RimeSmoke {
         try? FileManager.default.removeItem(at: base)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
 
-        // strdup keeps the C strings alive until finalize returns.
-        let shared = strdup(base.path)!
-        let user = strdup(base.path)!
-        let log = strdup(base.path)!
+        // strdup keeps the C strings alive until finalize returns; all Rime
+        // dirs point at the same scratch dir for this smoke.
+        let dir = strdup(base.path)!
         let codeName = strdup("coriander-smoke")!
         let distName = strdup("Coriander Smoke")!
         let distVersion = strdup("0.1")!
         let appName = strdup("coriander.smoke")!
         defer {
-            free(shared); free(user); free(log)
+            free(dir)
             free(codeName); free(distName); free(distVersion); free(appName)
         }
 
         var traits = RimeTraits()
+        // librime ABI convention: data_size = sizeof(RimeTraits) - sizeof(int)
         traits.data_size = Int32(MemoryLayout<RimeTraits>.size - MemoryLayout<Int32>.size)
-        traits.shared_data_dir = UnsafePointer(shared)
-        traits.user_data_dir = UnsafePointer(user)
-        traits.log_dir = UnsafePointer(log)
+        traits.shared_data_dir = UnsafePointer(dir)
+        traits.user_data_dir = UnsafePointer(dir)
+        traits.log_dir = UnsafePointer(dir)
         traits.distribution_code_name = UnsafePointer(codeName)
         traits.distribution_name = UnsafePointer(distName)
         traits.distribution_version = UnsafePointer(distVersion)

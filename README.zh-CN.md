@@ -35,6 +35,20 @@ Coriander 旨在将 Rime 输入引擎的灵活性，带到 iPhone 与 iPad 的�
 
 目前没有任何二进制文件、TestFlight 构建或 App Store 发布。当前预期的分发路径是先 TestFlight 测试，再 App Store 发布，不承诺发布日期。
 
+## 从源码构建
+
+前置要求:Xcode(含 iOS 平台支持)、[XcodeGen](https://github.com/yonaskolb/XcodeGen)、CMake 与 Ninja(`brew install xcodegen cmake ninja`)。
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer  # 若 xcode-select 指向他处
+scripts/librime/fetch.sh        # 克隆锁定版本 librime + 子模块到 .scratch
+scripts/librime/build-deps.sh   # 交叉编译第三方依赖(三切片)
+scripts/librime/build-librime.sh # 组装 Rime.xcframework
+xcodegen generate               # 由 project.yml 重新生成 Coriander.xcodeproj
+```
+
+然后打开 `Coriander.xcodeproj`,或用 `xcodebuild -scheme Coriander` 构建。构建产物位于 `.scratch/`(已 gitignore);`Coriander.xcodeproj` 由 `project.yml` 生成,不入库。
+
 ## 参与
 
 欢迎提交 issue、设计反馈与用例讨论。请[提交 issue](https://github.com/Gaotity/coriander/issues) 参与。

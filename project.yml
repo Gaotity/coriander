@@ -19,10 +19,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander
         CODE_SIGN_STYLE: Automatic
-        SWIFT_INCLUDE_PATHS[sdk=iphoneos*]: "$(inherited) $(SRCROOT)/.scratch/librime-deps/Rime.xcframework/ios-arm64/Headers"
-        SWIFT_INCLUDE_PATHS[sdk=iphonesimulator*]: "$(inherited) $(SRCROOT)/.scratch/librime-deps/Rime.xcframework/ios-arm64_x86_64-simulator/Headers"
-        LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: "$(inherited) $(SRCROOT)/.scratch/librime-deps/Rime.xcframework/ios-arm64"
-        LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: "$(inherited) $(SRCROOT)/.scratch/librime-deps/Rime.xcframework/ios-arm64_x86_64-simulator"
+        RIME_XCF: "$(SRCROOT)/.scratch/librime-deps/Rime.xcframework"
+        SWIFT_INCLUDE_PATHS[sdk=iphoneos*]: "$(inherited) $(RIME_XCF)/ios-arm64/Headers"
+        SWIFT_INCLUDE_PATHS[sdk=iphonesimulator*]: "$(inherited) $(RIME_XCF)/ios-arm64_x86_64-simulator/Headers"
+        LIBRARY_SEARCH_PATHS[sdk=iphoneos*]: "$(inherited) $(RIME_XCF)/ios-arm64"
+        LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]: "$(inherited) $(RIME_XCF)/ios-arm64_x86_64-simulator"
         OTHER_LDFLAGS: "$(inherited) -lrime-combined -lc++"
 schemes:
   Coriander:
