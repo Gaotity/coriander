@@ -1,133 +1,196 @@
 import UIKit
-import Rime
 
-/// Ticket 05 measurement harness inside the real extension: reports cold
-/// start and resident memory at rest, after engine init, and after the
-/// baseline dictionary is loaded (keys typed, candidates read). Reads the
-/// App Group Rime Directory read-only — Deployed artifacts must already
-/// exist (run "Prepare Rime data" in the Container App first, ADR-0001).
+/// The MVP keyboard input path (ticket 08): letter keys feed the Engine, the
+/// Composition renders inline in the host app, a candidate bar shows the
+/// current page of Candidates, and selection commits into the host app. The
+/// keyboard is a pure forwarder — every key goes through `processKey` and
+/// Commits are drained from the Engine; key semantics (space selects first
+/// Candidate, Return commits raw input, Backspace edits the Composition)
+/// live in the Rime configuration, not here. The Session is long-lived (one
+/// per extension process, per spec); a stale Composition is dropped on each
+/// presentation instead.
 final class KeyboardViewController: UIInputViewController {
-    private var statusLabel: UILabel!
-    private var balloons: [Data] = []
+    private var engine: Engine?
+    private let stack = UIStackView()
+    private let candidateBar = UIStackView()
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        let coldStartMs = Date().timeIntervalSince(RimeMeter.processStartTime()) * 1000
+        buildKeyboard()
+        if case .success(let engine) = KeyboardEngine.shared {
+            self.engine = engine
+            engine.startSession()  // one long-lived Session; no-op after the first
+        } else {
+            showSetupHint()
+        }
+    }
 
-        view.translatesAutoresizingMaskIntoConstraints = false
-        let stack = UIStackView()
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // A new presentation may follow a different text field: drop any
+        // stale Composition before typing resumes.
+        engine?.clearComposition()
+        refresh()
+    }
+
+    // MARK: Key handling
+
+    @objc private func letterTapped(_ sender: UIButton) {
+        guard let character = sender.title(for: .normal)?.first,
+              let key = Engine.Key(character: character) else { return }
+        engine?.processKey(key)
+        refresh()
+    }
+
+    @objc private func candidateTapped(_ sender: UIButton) {
+        engine?.selectCandidate(at: sender.tag)
+        drainCommit()
+        refresh()
+    }
+
+    @objc private func backspaceTapped() {
+        if let engine, !engine.input.composition.isEmpty {
+            engine.processKey(.backspace)
+        } else {
+            textDocumentProxy.deleteBackward()
+        }
+        refresh()
+    }
+
+    @objc private func spaceTapped() {
+        forwardOrInsert(.space, " ")
+    }
+
+    @objc private func returnTapped() {
+        forwardOrInsert(.return, "\n")
+    }
+
+    /// Forwards `key` to the Engine while a Composition is in progress
+    /// (draining any resulting Commit); otherwise types `fallback` literally.
+    private func forwardOrInsert(_ key: Engine.Key, _ fallback: String) {
+        if let engine, !engine.input.composition.isEmpty {
+            engine.processKey(key)
+            drainCommit()
+        } else {
+            textDocumentProxy.insertText(fallback)
+        }
+        refresh()
+    }
+
+    /// Inserts the pending Commit, if any, into the host app (replacing the
+    /// inline marked text).
+    private func drainCommit() {
+        guard let commit = engine?.takeCommit() else { return }
+        textDocumentProxy.insertText(commit)
+    }
+
+    private func refresh() {
+        guard let engine else { return }
+        let state = engine.input
+        if state.composition.isEmpty {
+            textDocumentProxy.unmarkText()
+        } else {
+            textDocumentProxy.setMarkedText(
+                state.composition,
+                selectedRange: NSRange(location: state.composition.utf16.count, length: 0))
+        }
+        candidateBar.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for (index, candidate) in state.candidates.enumerated() {
+            let button = UIButton(type: .system)
+            button.setTitle(candidate.text, for: .normal)
+            button.titleLabel?.font = .systemFont(ofSize: 20)
+            button.tag = index
+            button.addTarget(self, action: #selector(candidateTapped), for: .touchUpInside)
+            candidateBar.addArrangedSubview(button)
+        }
+    }
+
+    // MARK: UI construction
+
+    private func buildKeyboard() {
+        view.backgroundColor = .secondarySystemBackground
         stack.axis = .vertical
-        stack.spacing = 8
+        stack.distribution = .fillEqually
+        stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -8),
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
+            stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -4),
+            view.heightAnchor.constraint(equalToConstant: 280),
         ])
 
-        statusLabel = UILabel()
-        statusLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        statusLabel.numberOfLines = 0
-        stack.addArrangedSubview(statusLabel)
+        candidateBar.axis = .horizontal
+        candidateBar.distribution = .fillEqually
+        candidateBar.spacing = 6
+        stack.addArrangedSubview(candidateBar)
 
-        let jetsamButton = UIButton(type: .system)
-        jetsamButton.setTitle("Jetsam probe (+10 MB steps)", for: .normal)
-        jetsamButton.addTarget(self, action: #selector(jetsamProbe), for: .touchUpInside)
-        stack.addArrangedSubview(jetsamButton)
-
-        report(String(format: "cold start: %.0f ms", coldStartMs))
-        runMeasurement()
+        for row in ["qwertyuiop", "asdfghjkl", "zxcvbnm"] {
+            stack.addArrangedSubview(makeRow(row.map(String.init), action: #selector(letterTapped)))
+        }
+        stack.addArrangedSubview(makeFunctionRow())
     }
 
-    private func runMeasurement() {
-        report(String(format: "at rest: %.1f MB", RimeMeter.residentMemoryMB()))
-
-        guard let group = RimeMeter.groupURL else {
-            report("FAIL: App Group container unavailable")
-            return
+    private func makeRow(_ titles: [String], action: Selector) -> UIStackView {
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = 6
+        for title in titles {
+            row.addArrangedSubview(makeKey(title: title, action: action))
         }
-        let shared = group.appendingPathComponent(RimeMeter.sharedDirName)
-        let user = group.appendingPathComponent(RimeMeter.userDirName)
-        guard FileManager.default.fileExists(atPath: shared.path) else {
-            report("no seeded data — run Prepare in the app first")
-            return
-        }
-
-        guard let api = rime_get_api()?.pointee else {
-            report("FAIL: rime_get_api nil")
-            return
-        }
-        let dir = strdup(shared.path)!
-        let udir = strdup(user.path)!
-        let codeName = strdup("coriander")!
-        let distName = strdup("Coriander")!
-        let distVersion = strdup("0.1")!
-        let appName = strdup("coriander.keyboard")!
-        defer {
-            free(dir); free(udir)
-            free(codeName); free(distName); free(distVersion); free(appName)
-        }
-
-        var traits = RimeTraits()
-        traits.data_size = Int32(MemoryLayout<RimeTraits>.size - MemoryLayout<Int32>.size)
-        traits.shared_data_dir = UnsafePointer(dir)
-        traits.user_data_dir = UnsafePointer(udir)
-        traits.distribution_code_name = UnsafePointer(codeName)
-        traits.distribution_name = UnsafePointer(distName)
-        traits.distribution_version = UnsafePointer(distVersion)
-        traits.app_name = UnsafePointer(appName)
-
-        api.setup(&traits)
-        let initStart = Date()
-        api.initialize(&traits)
-        report(String(format: "initialize: %.2fs, memory %.1f MB",
-                      Date().timeIntervalSince(initStart), RimeMeter.residentMemoryMB()))
-
-        let session = api.create_session()
-        guard session != 0 else {
-            report("create_session: FAILED")
-            return
-        }
-        report(String(format: "session: memory %.1f MB", RimeMeter.residentMemoryMB()))
-
-        // Type "nihao" to force dictionary load, then read candidates.
-        for char in "nihao" {
-            _ = api.process_key(session, Int32(char.asciiValue!), 0)
-        }
-        var context = RimeContext()
-        context.data_size = Int32(MemoryLayout<RimeContext>.size - MemoryLayout<Int32>.size)
-        if api.get_context(session, &context) != 0 {
-            report(String(format: "candidates after 'nihao': %d, memory %.1f MB",
-                          context.menu.num_candidates, RimeMeter.residentMemoryMB()))
-            api.free_context(&context)
-        } else {
-            report("get_context failed (no candidates?)")
-        }
-
-        api.destroy_session(session)
-        api.finalize()
-        report(String(format: "teardown: memory %.1f MB", RimeMeter.residentMemoryMB()))
+        return row
     }
 
-    /// Deliberately escalate memory until jetsam kills the extension — the
-    /// Console/Settings panic log shows where it died. Manual trigger only.
-    @objc private func jetsamProbe() {
-        report("jetsam probe: allocating 10 MB chunks…")
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            for i in 1...40 {
-                self?.balloons.append(Data(repeating: 0xAB, count: 10 * 1_048_576))
-                let mb = RimeMeter.residentMemoryMB()
-                NSLog("[CorianderKeyboard] jetsam probe: %d chunks, %.1f MB", i, mb)
-                DispatchQueue.main.async { self?.report(String(format: "probe %d: %.1f MB", i, mb)) }
-                Thread.sleep(forTimeInterval: 0.3)
-            }
-        }
+    private func makeFunctionRow() -> UIStackView {
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.spacing = 6
+
+        // The globe key required by App Store guideline 4.4.1: cycles
+        // keyboards on tap, shows the input-mode menu on long press.
+        let globe = makeKey(image: "globe",
+                            action: #selector(handleInputModeList(from:with:)),
+                            events: .allTouchEvents)
+        globe.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        row.addArrangedSubview(globe)
+
+        let backspace = makeKey(image: "delete.backward", action: #selector(backspaceTapped))
+        backspace.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        row.addArrangedSubview(backspace)
+
+        row.addArrangedSubview(makeKey(title: "空格", action: #selector(spaceTapped)))
+
+        let `return` = makeKey(image: "return", action: #selector(returnTapped))
+        `return`.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        row.addArrangedSubview(`return`)
+        return row
     }
 
-    private func report(_ text: String) {
-        NSLog("[CorianderKeyboard] %@", text)
-        statusLabel.text = (statusLabel.text ?? "") + text + "\n"
+    private func makeKey(title: String? = nil, image: String? = nil,
+                         action: Selector, events: UIControl.Event = .touchUpInside) -> UIButton {
+        let button = UIButton(type: .system)
+        if let title {
+            button.setTitle(title, for: .normal)
+            button.titleLabel?.font = .systemFont(ofSize: 20)
+        }
+        if let image {
+            button.setImage(UIImage(systemName: image), for: .normal)
+        }
+        button.tintColor = .label
+        button.backgroundColor = .systemBackground
+        button.layer.cornerRadius = 5
+        button.addTarget(self, action: action, for: events)
+        return button
+    }
+
+    private func showSetupHint() {
+        let label = UILabel()
+        label.text = "Open the Coriander app to finish setup."
+        label.textAlignment = .center
+        label.font = .systemFont(ofSize: 14)
+        stack.addArrangedSubview(label)
     }
 }

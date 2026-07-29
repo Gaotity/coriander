@@ -6,7 +6,7 @@
 
 ## What to build
 
-Page through Candidates beyond the first page (swipe or page control), and honor schema-defined keybindings (e.g. space commits the first Candidate) so typing matches desktop Rime habits.
+Page through Candidates beyond the first page (swipe or page control), and honor schema-defined keybindings (e.g. space commits the first Candidate) so typing matches desktop Rime habits. Also render Candidate comments in the candidate bar (spec user story 4) — deferred from ticket 08, whose bar shows text only.
 
 ## Acceptance criteria
 

@@ -2,7 +2,7 @@
 
 **Parent spec:** [docs/spec/mvp.md](../spec/mvp.md)
 **Blocked by:** 07
-**Status:** ready-for-agent
+**Status:** in-progress (implemented and unit-tested; device typing smoke pending human run)
 
 ## What to build
 
@@ -14,3 +14,13 @@ The end-to-end tracer bullet: the Engine runs read-only inside the Keyboard Exte
 - [ ] Composition renders inline; candidate bar selectable
 - [ ] Commit inserts text into the host app
 - [ ] Globe key cycles keyboards
+
+## Results
+
+- The keyboard is a pure forwarder over the Engine. Every key goes through `processKey`; Commits are drained with `takeCommit` after candidate taps/space/return; `input` drives the inline Composition rendering and the candidate bar. Key semantics live in the Rime configuration, verified at the seam against the baseline defaults: space commits the first Candidate, Return commits raw input, Backspace shortens the Composition.
+- `Engine.Key` gained its first named keys (`.space`/`.backspace`/`.return`, X11 keysym values) — the first non-letter consumers.
+- `KeyboardEngine.shared` holds the extension's process-wide Engine as a `Result` — read-only, `deploy: false`; an unseeded Rime Directory shows a setup hint instead of the typing UI. One long-lived Session per extension process, per spec — `startSession` is guarded and effectively runs once. `Engine.clearComposition()` joins the interface now that a ticket first needs it: `viewWillAppear` drops any stale Composition, so text-field switches never inherit one.
+- UI is programmatic and dark-mode-aware: candidate bar, three QWERTY rows, function row (globe / backspace / 空格 / return). The globe uses `handleInputModeList(from:with:)` (tap cycles keyboards, long-press shows the input-mode menu) per App Store guideline 4.4.1.
+- Ticket 05's measurement harness is retired: `src/Shared/RimeMeter.swift` deleted (its path constants are now owned solely by `RimeDirectory`), `KeyboardViewController` rewritten onto the Engine, and `src/Engine` added to the extension's sources.
+- Candidate bar shows text only; rendering Candidate comments (spec user story 4) is deferred to ticket 13.
+- Unit: 5 seam tests green (candidates+commit, backspace, space, return, clear); full suite and the app+keyboard build green on the iPhone 17 Pro simulator. On-device typing smoke pending.
