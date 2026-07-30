@@ -19,7 +19,11 @@ final class KeyboardViewController: UIInputViewController {
         buildKeyboard()
         if case .success(let engine) = KeyboardEngine.shared {
             self.engine = engine
-            engine.startSession()  // one long-lived Session; no-op after the first
+            // True only when this call actually creates the Session — a
+            // no-op for an existing one, whose build time must be left alone.
+            if engine.startSession() {
+                KeyboardEngine.sessionBuiltAt = RimeDirectory.appGroup()?.lastDeployTime
+            }
         } else {
             showSetupHint()
         }
@@ -30,7 +34,22 @@ final class KeyboardViewController: UIInputViewController {
         // A new presentation may follow a different text field: drop any
         // stale Composition before typing resumes.
         engine?.clearComposition()
+        reloadSessionIfDeployed()
         refresh()
+    }
+
+    /// Picks up artifacts from a Deploy that ran while this keyboard process
+    /// was warm (ADR-0001: the next Session loads the new artifacts). The
+    /// Deploy is noticed via `user.yaml`'s build time; a Session restart is
+    /// enough to load the new artifacts (probed).
+    private func reloadSessionIfDeployed() {
+        guard let engine,
+              let current = RimeDirectory.appGroup()?.lastDeployTime,
+              current != KeyboardEngine.sessionBuiltAt else { return }
+        engine.endSession()
+        if engine.startSession() {
+            KeyboardEngine.sessionBuiltAt = current
+        }
     }
 
     // MARK: Key handling

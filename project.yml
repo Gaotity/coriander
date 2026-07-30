@@ -17,6 +17,8 @@ targets:
         CFBundleName: Coriander
         CFBundleDisplayName: Coriander
         UILaunchScreen_Generation: YES
+        UIFileSharingEnabled: YES
+        LSSupportsOpeningDocumentsInPlace: YES
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
     entitlements:
       path: src/App/Coriander.entitlements
@@ -28,6 +30,7 @@ targets:
     settings:
       base: &rimeSettings
         CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 977W8XTYW6
         RIME_XCF: "$(SRCROOT)/.scratch/librime-deps/Rime.xcframework"
         SWIFT_INCLUDE_PATHS[sdk=iphoneos*]: "$(inherited) $(RIME_XCF)/ios-arm64/Headers"
         SWIFT_INCLUDE_PATHS[sdk=iphonesimulator*]: "$(inherited) $(RIME_XCF)/ios-arm64_x86_64-simulator/Headers"

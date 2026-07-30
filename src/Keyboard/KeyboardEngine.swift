@@ -17,6 +17,11 @@ enum KeyboardEngine {
         }
     }()
 
+    /// Build time of the artifacts the current Session loaded. Process-wide
+    /// on purpose: controller instances come and go while the Session lives,
+    /// so snapshotting this in a controller would mask staleness.
+    static var sessionBuiltAt: Date?
+
     enum SetupError: Error {
         /// The Container App has not completed its first-launch seed + Deploy.
         case rimeDirectoryNotSeeded
