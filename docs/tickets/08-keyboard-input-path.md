@@ -2,7 +2,7 @@
 
 **Parent spec:** [docs/spec/mvp.md](../spec/mvp.md)
 **Blocked by:** 07
-**Status:** in-progress (implemented and unit-tested; device typing smoke pending human run)
+**Status:** done
 
 ## What to build
 
@@ -10,10 +10,10 @@ The end-to-end tracer bullet: the Engine runs read-only inside the Keyboard Exte
 
 ## Acceptance criteria
 
-- [ ] Type real text in any app (device or simulator)
-- [ ] Composition renders inline; candidate bar selectable
-- [ ] Commit inserts text into the host app
-- [ ] Globe key cycles keyboards
+- [x] Type real text in any app (device or simulator)
+- [x] Composition renders inline; candidate bar selectable
+- [x] Commit inserts text into the host app
+- [x] Globe key cycles keyboards
 
 ## Results
 
@@ -23,4 +23,4 @@ The end-to-end tracer bullet: the Engine runs read-only inside the Keyboard Exte
 - UI is programmatic and dark-mode-aware: candidate bar, three QWERTY rows, function row (globe / backspace / 空格 / return). The globe uses `handleInputModeList(from:with:)` (tap cycles keyboards, long-press shows the input-mode menu) per App Store guideline 4.4.1.
 - Ticket 05's measurement harness is retired: `src/Shared/RimeMeter.swift` deleted (its path constants are now owned solely by `RimeDirectory`), `KeyboardViewController` rewritten onto the Engine, and `src/Engine` added to the extension's sources.
 - Candidate bar shows text only; rendering Candidate comments (spec user story 4) is deferred to ticket 13.
-- Unit: 5 seam tests green (candidates+commit, backspace, space, return, clear); full suite and the app+keyboard build green on the iPhone 17 Pro simulator. On-device typing smoke pending.
+- Unit: 5 seam tests green (candidates+commit, backspace, space, return, clear); full suite and the app+keyboard build green on the iPhone 17 Pro simulator. On-device typing smoke (iPhone 15 Pro Max / iOS 18.7.3, 2026-07-29, human run): inline Composition, candidate-tap commit, space-first-candidate, return-raw-input, backspace editing, globe cycling, and read-only typing with Full Access off — all confirmed working.
