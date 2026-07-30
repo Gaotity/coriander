@@ -51,7 +51,7 @@ Then open `Coriander.xcodeproj` or build with `xcodebuild -scheme Coriander`. Bu
 
 ## Contributing
 
-Issues, design feedback, and use-case discussions are welcome. Please [open an issue](https://github.com/Gaotity/coriander/issues) to participate.
+Issues, design feedback, and use-case discussions are welcome. Please [open an issue](https://github.com/Winn-Gaoti-Studio/coriander/issues) to participate.
 
 Code contributions are not open yet. **Please do not submit code pull requests yet.** A reviewed Contributor License Agreement process will be published before code contributions open. Contributors will retain ownership of their work while granting the project the rights needed to maintain and relicense accepted contributions.
 

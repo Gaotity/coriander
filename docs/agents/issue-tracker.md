@@ -49,4 +49,4 @@ PRs, reviews, and releases stay on GitHub as before — see the workflow rules i
 - **Read**: `gh issue view <number> --comments`; **comment**: `gh issue comment <number> --body "..."`
 - **Label**: `gh issue edit <number> --add-label "..."`; **close**: `gh issue close <number> --comment "..."`
 - Infer the repo from `git remote -v`.
-- The active `gh` account may not own this repo — use `GH_TOKEN=$(gh auth token --user Gaotity) gh ...` for writes on `Gaotity/coriander`.
+- The active `gh` account may not own this repo — use `GH_TOKEN=$(gh auth token --user Gaotity) gh ...` for writes on `Winn-Gaoti-Studio/coriander`.
