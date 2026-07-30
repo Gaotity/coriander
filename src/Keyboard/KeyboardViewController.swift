@@ -178,14 +178,16 @@ final class KeyboardViewController: UIInputViewController {
         row.addArrangedSubview(globe)
 
         // The schema menu (ticket 12): lists exactly the deployed/enabled
-        // Schemas; selection switches within the current Session. The menu
-        // is computed when opened, so the checkmark always reflects the
-        // Session's current Schema and a Container App Deploy's list.
+        // Schemas; selection switches within the current Session. The
+        // deferred element must be `uncached` — the plain provider variant
+        // realizes its items only once and reuses them, freezing the
+        // checkmark (and a re-Deployed list) at first open; found in the
+        // ticket 12 device smoke.
         let schema = makeKey(title: "方案", action: nil)
         schema.widthAnchor.constraint(equalToConstant: 56).isActive = true
         schema.showsMenuAsPrimaryAction = true
         schema.menu = UIMenu(children: [
-            UIDeferredMenuElement { [weak self] completion in
+            UIDeferredMenuElement.uncached { [weak self] completion in
                 completion(self?.schemaMenuActions() ?? [])
             },
         ])
