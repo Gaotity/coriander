@@ -6,9 +6,9 @@ import Rime
 /// start, because librime 1.17 tolerates the finalize → re-initialize cycle
 /// (verified by CorianderLifecycleTests). The interface covers the input
 /// path — Session lifecycle, key events, reading Composition/Candidates,
-/// Commit — plus Deploy, which is Container App only (ADR-0001). Schema
-/// management joins in the ticket that first needs it. No librime type
-/// crosses this interface.
+/// Commit — plus in-Session Schema switching (ticket 12) and Deploy, which
+/// is Container App only (ADR-0001). No librime type crosses this
+/// interface.
 final class Engine {
     /// A key event delivered to the Session. `code` follows X11 keysym
     /// values (printable ASCII maps 1:1); `modifiers` is librime's mask.
@@ -36,6 +36,12 @@ final class Engine {
     struct Candidate: Equatable {
         let text: String
         let comment: String?
+    }
+
+    /// One deployed Schema the user may switch to: its id and display name.
+    struct Schema: Equatable {
+        let id: String
+        let name: String
     }
 
     /// Snapshot of the in-progress input: the Composition plus the current
@@ -155,6 +161,22 @@ final class Engine {
         (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
     }
 
+    /// The Schemas the deployed configuration enables, in schema_list order.
+    /// librime resolves the list from the deployed default config (probed):
+    /// a narrowed schema_list + Deploy narrows it — no Session needed.
+    var schemas: [Schema] {
+        guard running else { return [] }
+        var list = RimeSchemaList()
+        guard api.get_schema_list(&list) != 0 else { return [] }
+        defer { api.free_schema_list(&list) }
+        guard let items = list.list else { return [] }
+        return (0..<Int(list.size)).map { index in
+            let item = items[index]
+            return Schema(id: item.schema_id.map { String(cString: $0) } ?? "",
+                          name: item.name.map { String(cString: $0) } ?? "")
+        }
+    }
+
     /// Opens the input Session. False means librime rejected the Session (or
     /// one is already open — a process holds exactly one).
     @discardableResult
@@ -171,6 +193,28 @@ final class Engine {
         guard sessionID != 0 else { return }
         api.destroy_session(sessionID)
         sessionID = 0
+    }
+
+    /// The id of the Schema the Session is currently running; nil without a
+    /// Session.
+    var currentSchemaID: String? {
+        guard sessionID != 0 else { return nil }
+        // Schema ids are file stems — 256 bytes is generous.
+        var buffer = [CChar](repeating: 0, count: 256)
+        guard api.get_current_schema(sessionID, &buffer, buffer.count) != 0 else { return nil }
+        return String(cString: buffer)
+    }
+
+    /// Switches the Session to another enabled Schema, taking effect within
+    /// the current Session — no Session restart. librime drops the
+    /// in-progress Composition on switch and remembers the choice for the
+    /// next Session (both probed). False when `id` is not enabled:
+    /// librime's select_schema accepts ANY id unchecked (probed), so the
+    /// "only enabled Schemas" invariant is enforced here.
+    @discardableResult
+    func selectSchema(_ id: String) -> Bool {
+        guard sessionID != 0, schemas.contains(where: { $0.id == id }) else { return false }
+        return api.select_schema(sessionID, id) != 0
     }
 
     /// Feeds one key. True means the Session consumed it.

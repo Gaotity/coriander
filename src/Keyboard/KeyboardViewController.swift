@@ -3,12 +3,13 @@ import UIKit
 /// The MVP keyboard input path (ticket 08): letter keys feed the Engine, the
 /// Composition renders inline in the host app, a candidate bar shows the
 /// current page of Candidates, and selection commits into the host app. The
-/// keyboard is a pure forwarder — every key goes through `processKey` and
-/// Commits are drained from the Engine; key semantics (space selects first
-/// Candidate, Return commits raw input, Backspace edits the Composition)
-/// live in the Rime configuration, not here. The Session is long-lived (one
-/// per extension process, per spec); a stale Composition is dropped on each
-/// presentation instead.
+/// 方案 key (ticket 12) opens the schema menu, switching Schemas within the
+/// current Session. The keyboard is a pure forwarder — every key goes
+/// through `processKey` and Commits are drained from the Engine; key
+/// semantics (space selects first Candidate, Return commits raw input,
+/// Backspace edits the Composition) live in the Rime configuration, not
+/// here. The Session is long-lived (one per extension process, per spec);
+/// a stale Composition is dropped on each presentation instead.
 final class KeyboardViewController: UIInputViewController {
     private var engine: Engine?
     private let stack = UIStackView()
@@ -176,6 +177,20 @@ final class KeyboardViewController: UIInputViewController {
         globe.widthAnchor.constraint(equalToConstant: 48).isActive = true
         row.addArrangedSubview(globe)
 
+        // The schema menu (ticket 12): lists exactly the deployed/enabled
+        // Schemas; selection switches within the current Session. The menu
+        // is computed when opened, so the checkmark always reflects the
+        // Session's current Schema and a Container App Deploy's list.
+        let schema = makeKey(title: "方案", action: nil)
+        schema.widthAnchor.constraint(equalToConstant: 56).isActive = true
+        schema.showsMenuAsPrimaryAction = true
+        schema.menu = UIMenu(children: [
+            UIDeferredMenuElement { [weak self] completion in
+                completion(self?.schemaMenuActions() ?? [])
+            },
+        ])
+        row.addArrangedSubview(schema)
+
         let backspace = makeKey(image: "delete.backward", action: #selector(backspaceTapped))
         backspace.widthAnchor.constraint(equalToConstant: 48).isActive = true
         row.addArrangedSubview(backspace)
@@ -188,8 +203,24 @@ final class KeyboardViewController: UIInputViewController {
         return row
     }
 
+    /// One menu action per enabled Schema, the Session's current one
+    /// checkmarked. Selecting one switches within the current Session;
+    /// librime drops any in-progress Composition (probed), which `refresh`
+    /// then unmarks.
+    private func schemaMenuActions() -> [UIAction] {
+        guard let engine else { return [] }
+        let current = engine.currentSchemaID
+        return engine.schemas.map { schema in
+            UIAction(title: schema.name, state: schema.id == current ? .on : .off) { [weak self] _ in
+                guard let self else { return }
+                self.engine?.selectSchema(schema.id)
+                self.refresh()
+            }
+        }
+    }
+
     private func makeKey(title: String? = nil, image: String? = nil,
-                         action: Selector, events: UIControl.Event = .touchUpInside) -> UIButton {
+                         action: Selector?, events: UIControl.Event = .touchUpInside) -> UIButton {
         let button = UIButton(type: .system)
         if let title {
             button.setTitle(title, for: .normal)
@@ -201,7 +232,9 @@ final class KeyboardViewController: UIInputViewController {
         button.tintColor = .label
         button.backgroundColor = .systemBackground
         button.layer.cornerRadius = 5
-        button.addTarget(self, action: action, for: events)
+        if let action {
+            button.addTarget(self, action: action, for: events)
+        }
         return button
     }
 
