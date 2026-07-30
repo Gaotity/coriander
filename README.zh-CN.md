@@ -49,6 +49,16 @@ xcodegen generate               # 由 project.yml 重新生成 Coriander.xcodepr
 
 然后打开 `Coriander.xcodeproj`,或用 `xcodebuild -scheme Coriander` 构建。构建产物位于 `.scratch/`(已 gitignore);`Coriander.xcodeproj` 由 `project.yml` 生成,不入库。
 
+签名:`project.yml` 中为维护者的真机运行钉了 `DEVELOPMENT_TEAM`——本地真机构建请改成你自己的 Apple team。
+
+## 测试
+
+```sh
+xcodebuild test -scheme Coriander -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+```
+
+测试为 hostless 单元测试 bundle,经 Swift Engine seam 驱动真实 librime(`CorianderEngineTests`),另有独立 lifecycle target(`CorianderLifecycleTests`)探测 librime 的 finalize → re-initialize 周期。任意较新的 iPhone 模拟器即可。
+
 ## 参与
 
 欢迎提交 issue、设计反馈与用例讨论。请[提交 issue](https://github.com/Winn-Gaoti-Studio/coriander/issues) 参与。

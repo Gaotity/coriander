@@ -49,6 +49,16 @@ xcodegen generate               # regenerate Coriander.xcodeproj from project.ym
 
 Then open `Coriander.xcodeproj` or build with `xcodebuild -scheme Coriander`. Build artifacts live under `.scratch/` (gitignored); `Coriander.xcodeproj` is generated from `project.yml` and never committed.
 
+Signing: `DEVELOPMENT_TEAM` is pinned in `project.yml` for the maintainer's device runs — set it to your own Apple team for local device builds.
+
+## Testing
+
+```sh
+xcodebuild test -scheme Coriander -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+```
+
+The suites are hostless unit-test bundles driving the real librime through the Swift Engine seam (`CorianderEngineTests`), plus an isolated lifecycle target (`CorianderLifecycleTests`) probing librime's finalize → re-initialize cycle. Any recent iPhone simulator works.
+
 ## Contributing
 
 Issues, design feedback, and use-case discussions are welcome. Please [open an issue](https://github.com/Winn-Gaoti-Studio/coriander/issues) to participate.
