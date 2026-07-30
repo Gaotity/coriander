@@ -157,6 +157,182 @@ final class EngineTests: XCTestCase {
                       "typing broke after failed Deploy: \(engine.input.candidates.map(\.text))")
     }
 
+    /// The Config Folder seed lands the schema_list switch once — a Files
+    /// edit of it is never overwritten (last-write-wins per file).
+    func testConfigFolderSeedsOnlyOnce() throws {
+        let config = try makeConfigFolder()
+        let baseline = Bundle(for: EngineTests.self).resourceURL!
+            .appendingPathComponent("rime-baseline", isDirectory: true)
+
+        XCTAssertTrue(try config.seedIfNeeded(from: baseline))
+        let marker = config.root.appendingPathComponent("default.custom.yaml")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: marker.path))
+
+        try "user edit\n".write(to: marker, atomically: true, encoding: .utf8)
+        XCTAssertFalse(try config.seedIfNeeded(from: baseline))
+        XCTAssertEqual(try String(contentsOf: marker, encoding: .utf8), "user edit\n")
+
+        // Deleting the file in Files is an edit too — no resurrection.
+        try FileManager.default.removeItem(at: marker)
+        XCTAssertFalse(try config.seedIfNeeded(from: baseline))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+    }
+
+    /// Sync overlays recursively, copies only differing content, skips
+    /// dotfiles, and never deletes Rime Directory files.
+    func testSyncOverlaysAndNeverDeletes() throws {
+        let engine = try TestEngine.shared.get()
+        let directory = TestEngine.directory
+        let config = try makeConfigFolder()
+        defer {
+            try? FileManager.default.removeItem(
+                at: directory.user.appendingPathComponent("luna_pinyin.custom.yaml"))
+            try? FileManager.default.removeItem(
+                at: directory.user.appendingPathComponent("opencc/test.json"))
+            try? engine.deploy()
+        }
+
+        try "patch:\n  menu/page_size: 9\n".write(
+            to: config.root.appendingPathComponent("luna_pinyin.custom.yaml"),
+            atomically: true, encoding: .utf8)
+        let nested = config.root.appendingPathComponent("opencc/test.json")
+        try FileManager.default.createDirectory(
+            at: nested.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "{}".write(to: nested, atomically: true, encoding: .utf8)
+        try "junk".write(
+            to: config.root.appendingPathComponent(".DS_Store"), atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(try config.sync(into: directory),
+                       ["luna_pinyin.custom.yaml", "opencc/test.json"])
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: directory.user.appendingPathComponent("opencc/test.json").path))
+        XCTAssertFalse(FileManager.default.fileExists(
+            atPath: directory.user.appendingPathComponent(".DS_Store").path))
+        // Pre-existing Rime Directory state survives the sync.
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: directory.user.appendingPathComponent("build").path))
+
+        // Unchanged: a second sync copies nothing.
+        XCTAssertEqual(try config.sync(into: directory), [])
+
+        // Edit wins per file: only the edited file copies again.
+        try "patch:\n  menu/page_size: 3\n".write(
+            to: config.root.appendingPathComponent("luna_pinyin.custom.yaml"),
+            atomically: true, encoding: .utf8)
+        XCTAssertEqual(try config.sync(into: directory), ["luna_pinyin.custom.yaml"])
+    }
+
+    /// The money test (ticket 10 acceptance): edit in the Config Folder →
+    /// sync + Deploy → the next Session sees the change. Twice, to prove the
+    /// ritual works repeatedly.
+    func testEditInConfigFolderReachesKeyboard() throws {
+        let engine = try TestEngine.shared.get()
+        let directory = TestEngine.directory
+        let config = try makeConfigFolder()
+        defer {
+            try? FileManager.default.removeItem(
+                at: directory.user.appendingPathComponent("luna_pinyin.custom.yaml"))
+            try? engine.deploy()
+        }
+        let patch = config.root.appendingPathComponent("luna_pinyin.custom.yaml")
+
+        func candidatesAfterRitual(_ yaml: String, backdate: Bool = false) throws -> Int {
+            try yaml.write(to: patch, atomically: true, encoding: .utf8)
+            if backdate {
+                // librime's rebuild trigger compares second-precision mtimes;
+                // backdate the first patch so the second edit always lands in
+                // a different second (a non-issue for human rituals).
+                try FileManager.default.setAttributes(
+                    [.modificationDate: Date(timeIntervalSinceNow: -10)],
+                    ofItemAtPath: patch.path)
+            }
+            _ = try config.sync(into: directory)
+            try engine.deploy()
+            XCTAssertTrue(engine.startSession())
+            defer { engine.endSession() }
+            try type("nihao", into: engine)
+            return engine.input.candidates.count
+        }
+
+        XCTAssertGreaterThan(try candidatesAfterRitual("patch:\n  menu/page_size: 9\n", backdate: true), 5)
+        XCTAssertEqual(try candidatesAfterRitual("patch:\n  menu/page_size: 3\n"), 3)
+    }
+
+    /// A fresh scratch Config Folder per test (directory created).
+    private func makeConfigFolder() throws -> ConfigFolder {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("coriander-config-tests/\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return ConfigFolder(root: root)
+    }
+
+    /// A Deploy invalidates the in-progress Session; the next Session loads
+    /// the new artifacts even when the Deploy happened outside this process
+    /// (ADR-0001) — proven by rewriting the artifact on disk between
+    /// Sessions. This is the keyboard's propagation mechanism for Config
+    /// Folder changes (ticket 10).
+    func testSessionRestartPicksUpNewArtifacts() throws {
+        let engine = try TestEngine.shared.get()
+        let directory = TestEngine.directory
+        let artifact = directory.user.appendingPathComponent("build/luna_pinyin.schema.yaml")
+        let backup = try Data(contentsOf: artifact)
+        defer {
+            try? backup.write(to: artifact)
+            try? engine.deploy()
+        }
+
+        XCTAssertTrue(engine.startSession())
+        try type("nihao", into: engine)
+        XCTAssertEqual(engine.input.candidates.count, 5)
+        engine.endSession()
+
+        // Simulate the Container App's Deploy: the artifact on disk changes.
+        let original = try String(contentsOf: artifact, encoding: .utf8)
+        let patched = original.replacingOccurrences(of: "page_size: 5", with: "page_size: 3")
+        XCTAssertNotEqual(patched, original, "artifact lacks the expected page_size line")
+        try patched.write(to: artifact, atomically: true, encoding: .utf8)
+
+        XCTAssertTrue(engine.startSession())
+        defer { engine.endSession() }
+        try type("nihao", into: engine)
+        XCTAssertEqual(engine.input.candidates.count, 3)
+    }
+
+    /// The Config Folder may be reached through a symlinked path (on device,
+    /// /var vs /private/var) while the enumerator yields canonical paths —
+    /// relative paths must still come out correct (regression: a mangled
+    /// "yin.custom.yaml" once landed in the Rime Directory).
+    func testSyncResolvesSymlinkedRoot() throws {
+        let engine = try TestEngine.shared.get()
+        let directory = TestEngine.directory
+        defer {
+            try? FileManager.default.removeItem(
+                at: directory.user.appendingPathComponent("luna_pinyin.custom.yaml"))
+            try? engine.deploy()
+        }
+
+        // `ln` is a symlink to `realdir`, and the Config Folder is reached
+        // through it — mirroring /var vs /private/var on device.
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("coriander-symlink-test/\(UUID().uuidString)", isDirectory: true)
+        let realDir = base.appendingPathComponent("realdir", isDirectory: true)
+        let realConfig = realDir.appendingPathComponent("Rime Config", isDirectory: true)
+        try FileManager.default.createDirectory(at: realConfig, withIntermediateDirectories: true)
+        try "patch:\n  menu/page_size: 9\n".write(
+            to: realConfig.appendingPathComponent("luna_pinyin.custom.yaml"),
+            atomically: true, encoding: .utf8)
+        let link = base.appendingPathComponent("ln")
+        try FileManager.default.createSymbolicLink(atPath: link.path,
+                                                   withDestinationPath: realDir.path)
+
+        let config = ConfigFolder(
+            root: link.appendingPathComponent("Rime Config", isDirectory: true))
+        let changed = try config.sync(into: directory)
+        XCTAssertEqual(changed, ["luna_pinyin.custom.yaml"])
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: directory.user.appendingPathComponent("luna_pinyin.custom.yaml").path))
+    }
+
     /// Types ASCII text into the Engine, one key per character.
     private func type(_ text: String, into engine: Engine) throws {
         for character in text {

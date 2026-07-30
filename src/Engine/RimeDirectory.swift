@@ -28,6 +28,22 @@ struct RimeDirectory: Equatable {
         FileManager.default.fileExists(atPath: seededMarker.path)
     }
 
+    /// When the last Deploy completed, per `user.yaml`'s `var/last_build_time`
+    /// (written by librime's WorkspaceUpdate). The keyboard watches this to
+    /// pick up artifacts Deployed by the Container App while it was warm.
+    var lastDeployTime: Date? {
+        let userYaml = user.appendingPathComponent("user.yaml")
+        guard let text = try? String(contentsOf: userYaml, encoding: .utf8) else { return nil }
+        for line in text.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("last_build_time:") else { continue }
+            let value = trimmed.dropFirst("last_build_time:".count)
+                .trimmingCharacters(in: .whitespaces)
+            return Int(value).map { Date(timeIntervalSince1970: TimeInterval($0)) }
+        }
+        return nil
+    }
+
     /// Copies the vendored baseline into `shared`, replacing any partial
     /// earlier copy, and ensures `user` exists. Does not mark the directory
     /// seeded — that happens only after the Deploy over this copy succeeds.

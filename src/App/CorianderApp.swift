@@ -18,7 +18,7 @@ struct ContentView: View {
             Text(status)
                 .font(.footnote)
                 .multilineTextAlignment(.center)
-            Button("Deploy now", action: deployNow)
+            Button("Sync + Deploy", action: syncAndDeploy)
                 .disabled(busy)
         }
         .padding()
@@ -29,8 +29,8 @@ struct ContentView: View {
         }
     }
 
-    private func deployNow() {
-        run("Deploying…") { RimeBootstrap.deployNow() }
+    private func syncAndDeploy() {
+        run("Syncing + Deploying…") { RimeBootstrap.syncAndDeployNow() }
     }
 
     /// Runs a Rime Directory action off the main thread with a blocking
