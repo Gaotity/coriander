@@ -23,6 +23,11 @@ final class Engine {
             guard let ascii = character.asciiValue else { return nil }
             self.init(code: Int32(ascii))
         }
+
+        /// Common named keys (X11 keysym values).
+        static let space = Key(code: 0x20)
+        static let backspace = Key(code: 0xff08)
+        static let `return` = Key(code: 0xff0d)
     }
 
     /// One selectable conversion result (text and comment).
@@ -181,6 +186,13 @@ final class Engine {
         guard api.get_commit(sessionID, &commit) != 0 else { return nil }
         defer { _ = api.free_commit(&commit) }
         return commit.text.map { String(cString: $0) }
+    }
+
+    /// Discards the in-progress Composition without Committing — e.g. the
+    /// keyboard is presented for a new text field.
+    func clearComposition() {
+        guard sessionID != 0 else { return }
+        _ = api.clear_composition(sessionID)
     }
 
     /// Destroys the Session and finalizes librime, releasing the Rime

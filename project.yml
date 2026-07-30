@@ -8,7 +8,6 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: src/App
-      - path: src/Shared
       - path: src/Engine
       - path: vendor/rime-baseline
         type: folder
@@ -42,7 +41,7 @@ targets:
     deploymentTarget: "16.0"
     sources:
       - path: src/Keyboard
-      - path: src/Shared
+      - path: src/Engine
     info:
       path: src/Keyboard/Info.plist
       properties:
