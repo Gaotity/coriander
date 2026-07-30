@@ -51,7 +51,7 @@ xcodegen generate               # 由 project.yml 重新生成 Coriander.xcodepr
 
 ## 参与
 
-欢迎提交 issue、设计反馈与用例讨论。请[提交 issue](https://github.com/Gaotity/coriander/issues) 参与。
+欢迎提交 issue、设计反馈与用例讨论。请[提交 issue](https://github.com/Winn-Gaoti-Studio/coriander/issues) 参与。
 
 代码贡献尚未开放。**暂时请不要提交代码 PR。** 代码贡献开放前，会公布一份经过评审的贡献者许可协议（CLA）流程。贡献者保留其作品的所有权，同时授予项目维护与再许可已接受贡献所需的权利。
 
