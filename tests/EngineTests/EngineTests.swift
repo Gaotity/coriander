@@ -333,6 +333,92 @@ final class EngineTests: XCTestCase {
             atPath: directory.user.appendingPathComponent("luna_pinyin.custom.yaml").path))
     }
 
+    /// The Engine offers exactly the Schemas the deployed configuration
+    /// enables (probed: librime resolves the list from the deployed default
+    /// config). The baseline's default.custom.yaml enables five, in order.
+    func testSchemasMatchDeployedEnabledList() throws {
+        let engine = try TestEngine.shared.get()
+        XCTAssertEqual(engine.schemas.map(\.id), [
+            "luna_pinyin", "luna_pinyin_simp", "luna_pinyin_fluency",
+            "luna_pinyin_tw", "luna_quanpin",
+        ])
+        XCTAssertEqual(engine.schemas.first?.name, "朙月拼音")
+    }
+
+    /// "Enabled" is config-driven (probed): narrowing schema_list via
+    /// default.custom.yaml + Deploy narrows the offered Schemas — the list
+    /// itself needs no Session restart.
+    func testSchemasHonorDeployedEnabledList() throws {
+        let engine = try TestEngine.shared.get()
+        let custom = TestEngine.directory.user.appendingPathComponent("default.custom.yaml")
+        try "patch:\n  schema_list:\n    - schema: luna_pinyin\n    - schema: luna_pinyin_simp\n"
+            .write(to: custom, atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: custom)
+            try? engine.deploy()
+        }
+        try engine.deploy()
+        XCTAssertEqual(engine.schemas.map(\.id), ["luna_pinyin", "luna_pinyin_simp"])
+    }
+
+    /// The selection outlives the Session (probed: librime records it in
+    /// user.yaml) — the keyboard keeps the user's choice across text fields
+    /// and process restarts.
+    func testSchemaSelectionPersistsAcrossSessions() throws {
+        let engine = try TestEngine.shared.get()
+        XCTAssertTrue(engine.startSession())
+        XCTAssertEqual(engine.currentSchemaID, "luna_pinyin")
+        XCTAssertTrue(engine.selectSchema("luna_pinyin_simp"))
+        engine.endSession()
+
+        XCTAssertTrue(engine.startSession())
+        defer {
+            // The selection persists — restore it before ending the Session.
+            engine.selectSchema("luna_pinyin")
+            engine.endSession()
+        }
+        XCTAssertEqual(engine.currentSchemaID, "luna_pinyin_simp")
+    }
+
+    /// librime's select_schema accepts ANY id unchecked (probed: a bogus id
+    /// returns true and sticks); the Engine refuses ids outside the enabled
+    /// list so no caller can break the "only deployed/enabled" invariant.
+    func testSelectSchemaRejectsUnlistedSchema() throws {
+        let engine = try TestEngine.shared.get()
+        XCTAssertTrue(engine.startSession())
+        defer { engine.endSession() }
+
+        XCTAssertFalse(engine.selectSchema("nonexistent_schema"))
+        XCTAssertEqual(engine.currentSchemaID, "luna_pinyin")
+    }
+
+    /// Switching takes effect inside the live Session (ticket 12 acceptance)
+    /// — no Session restart. librime drops the Composition on switch
+    /// (probed) and the Session keeps typing on the new Schema.
+    func testSelectSchemaSwitchesWithinSession() throws {
+        let engine = try TestEngine.shared.get()
+        XCTAssertTrue(engine.startSession())
+        defer { engine.endSession() }
+        // The selection persists across Sessions (probed) — restore it.
+        defer { engine.selectSchema("luna_pinyin") }
+
+        XCTAssertEqual(engine.currentSchemaID, "luna_pinyin")
+        try type("ni", into: engine)
+        XCTAssertFalse(engine.input.composition.isEmpty)
+
+        XCTAssertTrue(engine.selectSchema("luna_pinyin_simp"))
+        XCTAssertEqual(engine.currentSchemaID, "luna_pinyin_simp")
+        XCTAssertTrue(engine.input.composition.isEmpty,
+                      "librime drops the Composition on switch (probed)")
+
+        try type("nihao", into: engine)
+        let index = try XCTUnwrap(
+            engine.input.candidates.firstIndex(where: { $0.text == "你好" }),
+            "expected 你好 among candidates, got \(engine.input.candidates.map(\.text))")
+        XCTAssertTrue(engine.selectCandidate(at: index))
+        XCTAssertEqual(engine.takeCommit(), "你好")
+    }
+
     /// Types ASCII text into the Engine, one key per character.
     private func type(_ text: String, into engine: Engine) throws {
         for character in text {
