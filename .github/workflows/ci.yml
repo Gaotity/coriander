@@ -52,20 +52,24 @@ jobs:
           key: rime-xcframework-${{ hashFiles('scripts/librime/fetch.sh', 'scripts/librime/build-deps.sh', 'scripts/librime/build-librime.sh') }}
 
       # xcodegen is needed on every run: Coriander.xcodeproj is generated, not
-      # committed. cmake and ninja are only for the librime rebuild below.
+      # committed.
       - name: Install xcodegen
         run: brew install xcodegen
 
+      # cmake, ninja, and bash are only for the librime rebuild below. The
+      # runner ships bash 3.2 only, but the scripts need bash 4+ (associative
+      # arrays), so install bash and invoke the scripts with it explicitly.
       - name: Install dep-build tools
         if: steps.rime-cache.outputs.cache-hit != 'true'
-        run: brew install cmake ninja
+        run: brew install cmake ninja bash
 
       - name: Build librime XCFramework
         if: steps.rime-cache.outputs.cache-hit != 'true'
         run: |
-          scripts/librime/fetch.sh
-          scripts/librime/build-deps.sh
-          scripts/librime/build-librime.sh
+          BASH="$(brew --prefix)/bin/bash"
+          "$BASH" scripts/librime/fetch.sh
+          "$BASH" scripts/librime/build-deps.sh
+          "$BASH" scripts/librime/build-librime.sh
 
       - name: Generate Xcode project
         run: xcodegen generate
