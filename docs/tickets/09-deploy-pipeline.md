@@ -2,7 +2,7 @@
 
 **Parent spec:** [docs/spec/mvp.md](../spec/mvp.md)
 **Blocked by:** 07
-**Status:** in-progress (implemented and seam-tested; app smoke pending human run)
+**Status:** done
 
 ## What to build
 
@@ -10,7 +10,7 @@ Container App Deploy action with progress and error reporting; last-good artifac
 
 ## Acceptance criteria
 
-- [ ] Deploy runs with visible progress and clear errors
+- [x] Deploy runs with visible progress and clear errors
 - [x] Failed Deploy preserves last-good artifacts
 - [x] Seam test: new Session loads new artifacts
 - [x] Seam test: failed Deploy keeps typing intact
@@ -22,4 +22,4 @@ Container App Deploy action with progress and error reporting; last-good artifac
 - Container App Deploys run on short-lived Engines (create → deploy → shutdown), releasing the User Dictionary for the keyboard within seconds. This is viable because librime 1.17's finalize → re-initialize cycle is verified by the new isolated `CorianderLifecycleTests` target (the probe finalizes librime and must not disturb the main suite's shared Engine). Decision recorded in ADR-0004; `Engine.shutdown()` now releases the one-live-Engine slot.
 - App UI: blocking indicator + stage text ("Deploying…" → "Deploy complete" / "Deploy failed: <schema ids>") behind a "Deploy now" button; first-launch bootstrap unchanged in shape (seed → deploy → shutdown → marker).
 - Observed during tests: librime's logger prints `COULD NOT CREATE A LOGGINGFILE` in the test sandbox (no log dir configured) — cosmetic only, unresolved.
-- App smoke pending (human): tap "Deploy now" → "Deploy complete". The failure path is covered by the seam test (a user-reachable broken yaml only arrives with ticket 10's Config Folder).
+- App smoke (device, 2026-07-30, human run): first-launch bootstrap, then "Deploy now" → "Deploy complete". The failure path is covered by the seam test (a user-reachable broken yaml only arrives with ticket 10's Config Folder).
