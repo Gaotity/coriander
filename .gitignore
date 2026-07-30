@@ -2,3 +2,4 @@
 Coriander.xcodeproj/
 src/App/Info.plist
 tests/EngineTests/Info.plist
+tests/LifecycleTests/Info.plist

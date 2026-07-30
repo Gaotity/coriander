@@ -81,6 +81,23 @@ targets:
       base:
         << : *rimeSettings
         PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander.engine-tests
+  CorianderLifecycleTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: src/Engine
+      - path: tests/LifecycleTests
+      - path: vendor/rime-baseline
+        type: folder
+    info:
+      path: tests/LifecycleTests/Info.plist
+      properties:
+        CFBundleName: CorianderLifecycleTests
+    settings:
+      base:
+        << : *rimeSettings
+        PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander.lifecycle-tests
 schemes:
   Coriander:
     build:
@@ -88,9 +105,11 @@ schemes:
         Coriander: all
         CorianderKeyboard: all
         CorianderEngineTests: [test]
+        CorianderLifecycleTests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
         - CorianderEngineTests
+        - CorianderLifecycleTests

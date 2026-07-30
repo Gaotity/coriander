@@ -11,7 +11,7 @@ enum KeyboardEngine {
             guard let directory = RimeDirectory.appGroup(), directory.isSeeded else {
                 return .failure(SetupError.rimeDirectoryNotSeeded)
             }
-            return .success(try Engine(directory: directory, deploy: false))
+            return .success(try Engine(directory: directory))
         } catch {
             return .failure(error)
         }

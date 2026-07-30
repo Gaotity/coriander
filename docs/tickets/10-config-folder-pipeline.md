@@ -6,7 +6,7 @@
 
 ## What to build
 
-The Files-visible Config Folder becomes the single source of truth for configuration: one-way pipeline syncs it into the Rime Directory and Deploys; conflicts resolve last-write-wins per file; sync never deletes user files. Changes reach the keyboard after the Container App next runs a sync + Deploy.
+The Files-visible Config Folder becomes the single source of truth for configuration: one-way pipeline syncs it into the Rime Directory and Deploys; conflicts resolve last-write-wins per file; sync never deletes user files. Changes reach the keyboard after the Container App next runs a sync + Deploy. Note (probed in ticket 09): librime silently ignores broken custom patches, so Deploy does not validate config syntax — user edits that break yaml go unreported unless the pipeline catches or surfaces them.
 
 ## Acceptance criteria
 

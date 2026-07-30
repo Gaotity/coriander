@@ -2,11 +2,13 @@ import Foundation
 import Rime
 
 /// The Swift adapter over the librime C API — the project's single deep
-/// module. One Engine per process: librime cannot finalize and re-initialize
-/// within a process, so the first `init` is also the last. This slice exposes
-/// the input path only — Session lifecycle, key events, reading
-/// Composition/Candidates, Commit. Deploy and schema management join in the
-/// tickets that first need them. No librime type crosses this interface.
+/// module. One live Engine per process; after `shutdown()` another may
+/// start, because librime 1.17 tolerates the finalize → re-initialize cycle
+/// (verified by CorianderLifecycleTests). The interface covers the input
+/// path — Session lifecycle, key events, reading Composition/Candidates,
+/// Commit — plus Deploy, which is Container App only (ADR-0001). Schema
+/// management joins in the ticket that first needs it. No librime type
+/// crosses this interface.
 final class Engine {
     /// A key event delivered to the Session. `code` follows X11 keysym
     /// values (printable ASCII maps 1:1); `modifiers` is librime's mask.
@@ -46,24 +48,31 @@ final class Engine {
     enum StartError: Error {
         /// `rime_get_api()` returned nil.
         case apiUnavailable
-        /// A second Engine in one process — librime cannot re-initialize.
+        /// A second live Engine in one process.
         case alreadyStarted
-        /// The Deploy requested at start failed to launch.
-        case deployFailed
+    }
+
+    /// A Deploy failure (ticket 09).
+    enum DeployError: Error {
+        /// The Engine was already shut down.
+        case notRunning
+        /// librime refused to start the maintenance thread.
+        case failedToStart
+        /// These schema sources produced no fresh compiled artifacts.
+        case schemasFailed([String])
     }
 
     private static let startLock = NSLock()
     private static var didStart = false
 
     private let api: RimeApi
+    private let directory: RimeDirectory
     private var sessionID: RimeSessionId = 0
     private var running = true
 
-    /// Sets up and initializes librime against `directory`. With `deploy`,
-    /// runs one full Deploy synchronously before returning (Container App
-    /// first launch); otherwise the Engine starts against existing Deployed
-    /// artifacts (Keyboard Extension).
-    init(directory: RimeDirectory, deploy: Bool) throws {
+    /// Sets up and initializes librime against `directory`, starting against
+    /// existing Deployed artifacts. Use `deploy()` to (re)build them.
+    init(directory: RimeDirectory) throws {
         Self.startLock.lock()
         guard !Self.didStart else {
             Self.startLock.unlock()
@@ -76,6 +85,7 @@ final class Engine {
             throw StartError.apiUnavailable
         }
         self.api = api
+        self.directory = directory
 
         // strdup keeps the C strings alive until initialize returns; librime
         // copies them during setup.
@@ -102,23 +112,47 @@ final class Engine {
 
         api.setup(&traits)
         api.initialize(&traits)
+    }
 
-        if deploy {
-            // Deploy is async: start_maintenance only kicks it off, the
-            // maintenance thread does the work — and join reports no status,
-            // so a failed Deploy is detected by its missing artifacts.
-            guard api.start_maintenance(1) != 0 else {
-                api.finalize()
-                throw StartError.deployFailed
+    /// Runs one full Deploy synchronously and verifies that every schema
+    /// source was successfully rebuilt. Container App only — the Keyboard
+    /// Extension never Deploys (ADR-0001). The Deploy invalidates any
+    /// in-progress Session; the next Session loads the new artifacts.
+    func deploy() throws {
+        guard running else { throw DeployError.notRunning }
+        // Deploy is async: start_maintenance only kicks it off, the
+        // maintenance thread does the work — and join reports no status,
+        // so a failure is detected afterwards by its stale artifacts.
+        guard api.start_maintenance(1) != 0 else { throw DeployError.failedToStart }
+        api.join_maintenance_thread()
+        let failed = failedSchemas()
+        guard failed.isEmpty else { throw DeployError.schemasFailed(failed) }
+    }
+
+    /// Schema sources in `shared` that the Deploy did not successfully
+    /// rebuild: no compiled counterpart under `user/build`, or a counterpart
+    /// older than the source. librime preserves the previous artifact when
+    /// compilation fails (natural last-good), so a stale artifact is the
+    /// failure signal. Only schema files are covered — broken custom
+    /// patches are silently ignored by librime (probed) and cannot be
+    /// detected here, and dictionary-table failures are not detected. (The baseline keeps shared == schema_list; ticket 17
+    /// owns refining this once schemas can be disabled.)
+    private func failedSchemas() -> [String] {
+        let fm = FileManager.default
+        let sources = (try? fm.contentsOfDirectory(atPath: directory.shared.path)) ?? []
+        let buildDir = directory.user.appendingPathComponent("build", isDirectory: true)
+        return sources
+            .filter { $0.hasSuffix(".schema.yaml") }
+            .filter { name in
+                guard let artifactDate = mtime(buildDir.appendingPathComponent(name)) else { return true }
+                guard let sourceDate = mtime(directory.shared.appendingPathComponent(name)) else { return false }
+                return sourceDate > artifactDate
             }
-            api.join_maintenance_thread()
-            let buildDir = directory.user.appendingPathComponent("build", isDirectory: true)
-            let artifacts = (try? FileManager.default.contentsOfDirectory(atPath: buildDir.path)) ?? []
-            guard !artifacts.isEmpty else {
-                api.finalize()
-                throw StartError.deployFailed
-            }
-        }
+            .sorted()
+    }
+
+    private func mtime(_ url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
     }
 
     /// Opens the input Session. False means librime rejected the Session (or
@@ -196,14 +230,30 @@ final class Engine {
     }
 
     /// Destroys the Session and finalizes librime, releasing the Rime
-    /// Directory (including the User Dictionary) for the other process's
-    /// Engine. The process cannot host an Engine again afterwards.
+    /// Directory (including the User Dictionary) for other Engines. A new
+    /// Engine may start in this process afterwards.
     func shutdown() {
         guard running else { return }
         endSession()
         api.finalize()
         running = false
+        Self.startLock.lock()
+        Self.didStart = false
+        Self.startLock.unlock()
     }
 
     deinit { shutdown() }
+}
+
+extension Engine.DeployError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .notRunning:
+            return "the Engine is shut down"
+        case .failedToStart:
+            return "librime refused to start the Deploy"
+        case .schemasFailed(let schemas):
+            return "no fresh artifacts for: \(schemas.joined(separator: ", "))"
+        }
+    }
 }
