@@ -11,6 +11,9 @@ struct ContentView: View {
     @State private var busy = true
     @State private var status = "Preparing Rime data…"
     @State private var didRun = false
+    @State private var showsKeyPopup = KeyboardSettings().showsKeyPopup
+    // PROBE16: auto-focused field so the keyboard appears without taps.
+    @FocusState private var probeFocused: Bool
 
     var body: some View {
         VStack(spacing: 12) {
@@ -20,12 +23,28 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
             Button("Sync + Deploy", action: syncAndDeploy)
                 .disabled(busy)
+            // The settings bridge's one end-to-end setting (ticket 16);
+            // the full settings UI is ticket 17.
+            Toggle("Key popup", isOn: $showsKeyPopup)
+                .onChange(of: showsKeyPopup) { newValue in
+                    KeyboardSettings().showsKeyPopup = newValue
+                }
+            // PROBE16: focus is delayed until seeding should have finished.
+            TextField("probe", text: .constant(""))
+                .focused($probeFocused)
         }
         .padding()
         .onAppear {
             guard !didRun else { return }
             didRun = true
             run { RimeBootstrap.run() }
+            // PROBE16: flip the bridge value through the same write path
+            // the toggle uses, so the keyboard's next presentation proves
+            // the read; removed before merge.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                KeyboardSettings().showsKeyPopup = false
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15) { probeFocused = true }
         }
     }
 

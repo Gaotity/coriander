@@ -1,12 +1,13 @@
 import UIKit
 
-/// The keyboard's input path (tickets 08, 12) and iPhone portrait layout
-/// (ticket 22). Letter keys feed the Engine, the Composition renders
+/// The keyboard's input path (tickets 08, 12) and Layout (tickets 22, 16).
+/// Letter keys feed the Engine, the Composition renders
 /// inline in the host app, a candidate bar shows the current page of
 /// Candidates, and selection commits into the host app. The layout follows
 /// iOS-native typing chrome — QWERTY geometry with a 123 numbers/symbols
 /// layer, shift with lowercase/uppercase/caps-lock states, and key-press
-/// popups — all derived proportionally from the keyboard width (see
+/// popups — all derived proportionally per presentation: iPhone portrait,
+/// iPhone landscape, iPad full-size, and iPad floating (see
 /// `KeyboardLayout`). The 方案 key opens the schema menu, switching
 /// Schemas within the current Session. The keyboard is a pure forwarder —
 /// every key goes through `processKey` and Commits are drained from the
@@ -79,8 +80,26 @@ final class KeyboardViewController: UIInputViewController {
         // in lowercase, matching the native keyboard.
         engine?.clearComposition()
         shiftState = .lowercase
+        applySettings()
+        probeLog("PROBE16 appear showsKeyPopup=\(KeyboardSettings().showsKeyPopup) engine=\(engine != nil)")
         reloadSessionIfDeployed()
         refresh()
+    }
+
+    /// PROBE16: temporary probe, removed before merge. Appends a line to
+    /// the App Group container so simulator runs can be read externally.
+    private func probeLog(_ message: String) {
+        guard let url = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: RimeDirectory.groupID)?
+            .appendingPathComponent("probe16.log") else { return }
+        let line = message + "\n"
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? line.write(to: url, atomically: false, encoding: .utf8)
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -88,15 +107,26 @@ final class KeyboardViewController: UIInputViewController {
         let width = view.bounds.width
         guard width > 0, width != laidOutWidth else { return }
         laidOutWidth = width
-        let layout = KeyboardLayout(width: width)
+        let layout = KeyboardLayout(
+            width: width, form: layoutForm(width: width), portraitWidth: portraitWidth)
+        probeLog("PROBE16 layout form=\(layout.form) width=\(width) viewH=\(view.bounds.height) "
+            + "safe=\(view.safeAreaInsets) screen=\(UIScreen.main.bounds.size) "
+            + "idiom=\(traitCollection.userInterfaceIdiom.rawValue) "
+            + "vSC=\(traitCollection.verticalSizeClass.rawValue) hSC=\(traitCollection.horizontalSizeClass.rawValue) "
+            + "rowH=\(layout.rowHeight) rowGap=\(layout.rowGap) letterW=\(layout.letterWidth) "
+            + "sideM=\(layout.sideMargin) keyGap=\(layout.keyGap) totalH=\(layout.totalHeight)")
         stack.spacing = layout.rowGap
         qwertyLayer.spacing = layout.rowGap
         numbersLayer.spacing = layout.rowGap
         for rowStack in keyGapStacks { rowStack.spacing = layout.keyGap }
         for spec in widthSpecs { spec.constraint.constant = spec.resolve(layout) }
         for constraint in rowHeightConstraints { constraint.constant = layout.rowHeight }
-        stackLeading?.constant = layout.sideMargin
-        stackTrailing?.constant = -layout.sideMargin
+        // Landscape safe-area insets (camera housing, home indicator side)
+        // keep the outermost keys inside the safe area like the native
+        // keyboard; they are zero in portrait and on iPad, so portrait is
+        // untouched.
+        stackLeading?.constant = layout.sideMargin + view.safeAreaInsets.left
+        stackTrailing?.constant = -layout.sideMargin - view.safeAreaInsets.right
         // The stack's bottom anchors inside the safe area, so the fixed
         // content height must ride above any home-indicator inset.
         heightConstraint?.constant = layout.totalHeight + view.safeAreaInsets.bottom
@@ -127,6 +157,37 @@ final class KeyboardViewController: UIInputViewController {
         engine.endSession()
         if engine.startSession() {
             KeyboardEngine.sessionBuiltAt = current
+        }
+    }
+
+    // MARK: Layout forms + settings bridge (ticket 16)
+
+    /// Which presentation the geometry adapts to. iPhone landscape is the
+    /// compact-vertical size class; on iPad the idiom never changes, but
+    /// the floating presentation (like other compact-width cases) is far
+    /// narrower than any docked iPad keyboard, so width discriminates —
+    /// 500pt sits between the floating panel (~320pt) and the smallest
+    /// full-size iPad width (744pt).
+    private func layoutForm(width: CGFloat) -> KeyboardLayout.Form {
+        if traitCollection.userInterfaceIdiom == .pad {
+            return width < 500 ? .padFloating : .padFull
+        }
+        return traitCollection.verticalSizeClass == .compact ? .phoneLandscape : .phonePortrait
+    }
+
+    /// The device's portrait width: the screen's short side regardless of
+    /// orientation. Landscape row heights derive from it so keys track the
+    /// device instead of stretching with the long dimension.
+    private var portraitWidth: CGFloat {
+        min(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
+    }
+
+    /// Re-reads the settings bridge on every presentation so changes made
+    /// in the Container App apply without a Session restart.
+    private func applySettings() {
+        let settings = KeyboardSettings()
+        for button in letterButtons + characterButtons {
+            button.popupEnabled = settings.showsKeyPopup
         }
     }
 

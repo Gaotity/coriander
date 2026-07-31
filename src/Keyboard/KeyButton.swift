@@ -10,6 +10,9 @@ final class KeyButton: UIButton {
     var forwardText: String?
     /// The glyph shown in the keycap popup; nil disables the popup.
     var popupText: String?
+    /// Whether the popup may show at all; the keyboard mirrors the
+    /// settings bridge's key-popup setting here on each presentation.
+    var popupEnabled = true
     /// The view the popup is added to — the keyboard's root view, so the
     /// popup may overlap the rows and candidate bar above the key.
     weak var popupHost: UIView?
@@ -60,7 +63,7 @@ final class KeyButton: UIButton {
     }
 
     private func showPopup() {
-        guard popup == nil, let host = popupHost, let text = popupText else { return }
+        guard popupEnabled, popup == nil, let host = popupHost, let text = popupText else { return }
         let keyFrame = convert(bounds, to: host)
         let popup = KeyPopupView(text: text, keySize: keyFrame.size, fill: idleColor)
         // Centered on the key, clamped inside the keyboard; the bottom
