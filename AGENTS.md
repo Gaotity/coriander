@@ -6,7 +6,7 @@ Markdown docs in this repo use **soft wrap**: one paragraph per line, no hard li
 
 ### Issue tracker
 
-Internal tickets are local Markdown files: `docs/spec/` for specs, `docs/tickets/<NN>-<slug>.md` for tickets with `Blocked by:` edges. GitHub issues are only the external inbox. See `docs/agents/issue-tracker.md`.
+Internal tickets live in Linear (workspace `wg-studio`, team Engineering, project Coriander): one issue per ticket, blocking edges as Linear relations, bilingual descriptions. Specs live in `docs/spec/`; `docs/tickets/` is a frozen pre-Linear archive. GitHub issues are only the external inbox. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
