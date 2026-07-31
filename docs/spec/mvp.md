@@ -54,13 +54,13 @@ Coriander ships a Container App plus one Keyboard Extension, each embedding its 
 - **Settings**: Rime-layer settings (schema enable/order) write `default.custom.yaml` in the Config Folder and trigger a Deploy; UI-layer settings (Layout, keyboard feel) are shared with the keyboard via App Group user defaults.
 - **Layouts**: the iPhone portrait layout follows the iOS native QWERTY geometry, press feedback, and layer structure (ticket 22); iPhone landscape and iPad (including floating keyboard) adapt that layout system (ticket 16). No theme/skin system in the MVP.
 - **Ticket 1 — platform validation** (acceptance criteria measured on a real device, harness kept on a throwaway branch): whether App Groups work on-device under a free Personal Team or require a paid program; App Group read/write behavior with and without Full Access; librime memory footprint and cold-start time inside the extension; baseline seed duration; Deploy duration. Outcomes may adjust ADR-0001/0003 details but not their shape.
-- Tickets are split from this spec via `/to-tickets` and tracked as local Markdown files under `docs/tickets/`, each declaring its blocking edges.
+- Tickets are split from this spec via `/to-tickets` and tracked in the Linear Coriander project (team Engineering), each declaring its blocking relations; descriptions are bilingual.
 
 ## Testing Decisions
 
 - **One seam**: the Swift Engine interface, tested with XCTest against real librime running in the app/test process. No librime mocks — the integration itself is where the risk lives.
 - A good test asserts external behavior at the Engine interface: key events in, Composition/Candidates/Commit out; schema switching; Deploy validation outcomes; Import overlay and rollback; User Dictionary learning. It never asserts librime internals.
-- The Keyboard Extension UI is a thin shell over the Engine and is covered by on-device smoke checks, not unit tests.
+- The Keyboard Extension UI is a thin shell over the Engine and is covered by simulator verification (screenshots and throwaway UI-test probes), not unit tests; a human device smoke remains the gate for device-real surfaces — entitlements/App Group, filesystem paths, memory/jetsam behavior, and signing.
 - Ticket 1's platform validations are one-off measurements recorded on the issue; the harness lives on a throwaway prototype branch and is not merged to `main`.
 - Greenfield repo: the first tests establish the pattern for all later tickets.
 
