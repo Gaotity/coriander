@@ -47,6 +47,7 @@ final class KeyboardViewController: UIInputViewController {
     private var heightConstraint: NSLayoutConstraint?
     private var symbolPointSize: CGFloat = 16
     private var laidOutWidth: CGFloat = 0
+    private var laidOutBottomInset: CGFloat = 0
 
     /// Character keys use the native white keycaps that gray out while
     /// pressed; function keys sit one step darker and flip when pressed
@@ -88,8 +89,15 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let width = view.bounds.width
-        guard width > 0, width != laidOutWidth else { return }
+        // The geometry depends on the width and the bottom safe-area inset
+        // (the home-indicator side moves when the device flips 180°); side
+        // insets are always zero for the keyboard window (probed) — like
+        // the native keyboard, rows span the full width in landscape.
+        guard width > 0,
+              width != laidOutWidth || view.safeAreaInsets.bottom != laidOutBottomInset
+        else { return }
         laidOutWidth = width
+        laidOutBottomInset = view.safeAreaInsets.bottom
         let layout = KeyboardLayout(
             width: width, form: layoutForm(width: width), portraitWidth: portraitWidth)
         stack.spacing = layout.rowGap
@@ -98,12 +106,8 @@ final class KeyboardViewController: UIInputViewController {
         for rowStack in keyGapStacks { rowStack.spacing = layout.keyGap }
         for spec in widthSpecs { spec.constraint.constant = spec.resolve(layout) }
         for constraint in rowHeightConstraints { constraint.constant = layout.rowHeight }
-        // Landscape safe-area insets (camera housing, home indicator side)
-        // keep the outermost keys inside the safe area like the native
-        // keyboard; they are zero in portrait and on iPad, so portrait is
-        // untouched.
-        stackLeading?.constant = layout.sideMargin + view.safeAreaInsets.left
-        stackTrailing?.constant = -layout.sideMargin - view.safeAreaInsets.right
+        stackLeading?.constant = layout.sideMargin
+        stackTrailing?.constant = -layout.sideMargin
         // The stack's bottom anchors inside the safe area, so the fixed
         // content height must ride above any home-indicator inset.
         heightConstraint?.constant = layout.totalHeight + view.safeAreaInsets.bottom
