@@ -3,7 +3,10 @@ import UIKit
 /// The keyboard's input path (tickets 08, 12) and Layout (tickets 22, 16).
 /// Letter keys feed the Engine, the Composition renders
 /// inline in the host app, a candidate bar shows the current page of
-/// Candidates, and selection commits into the host app. The layout follows
+/// Candidates with their comments, and selection commits into the host app.
+/// Page-turn keys at the bar's ends reach Candidates beyond the first page
+/// (ticket 13); the keyboard keeps no paging state of its own — librime
+/// resets the page when the Composition changes (probed). The layout follows
 /// iOS-native typing chrome — QWERTY geometry with a 123 numbers/symbols
 /// layer, shift with lowercase/uppercase/caps-lock states, and key-press
 /// popups — all derived proportionally per presentation: iPhone portrait,
@@ -30,12 +33,18 @@ final class KeyboardViewController: UIInputViewController {
     private var qwertyLayer: UIStackView!
     private var numbersLayer: UIStackView!
 
+    /// The candidate bar's page-turn keys (ticket 13). They sit outside the
+    /// bar until a Composition opens, so they are held strongly; `refresh`
+    /// re-adds them at the ends when the page state calls for them.
+    private var pageBackKey: UIButton!
+    private var pageForwardKey: UIButton!
+
     private var shiftState: ShiftState = .lowercase { didSet { applyShift() } }
     private weak var shiftKey: KeyButton?
     private var letterButtons: [KeyButton] = []
     private var characterButtons: [KeyButton] = []
     private var labelButtons: [KeyButton] = []
-    private var iconKeys: [(button: KeyButton, image: String)] = []
+    private var iconKeys: [(button: UIButton, image: String)] = []
 
     /// Constraints and stacks whose constants track the keyboard width;
     /// re-resolved in `viewDidLayoutSubviews` from `KeyboardLayout`.
@@ -230,6 +239,16 @@ final class KeyboardViewController: UIInputViewController {
         refresh()
     }
 
+    @objc private func pageBackTapped() {
+        engine?.previousPage()
+        refresh()
+    }
+
+    @objc private func pageForwardTapped() {
+        engine?.nextPage()
+        refresh()
+    }
+
     @objc private func backspaceTapped() {
         if let engine, !engine.input.composition.isEmpty {
             engine.processKey(.backspace)
@@ -295,14 +314,52 @@ final class KeyboardViewController: UIInputViewController {
                 selectedRange: NSRange(location: state.composition.utf16.count, length: 0))
         }
         candidateBar.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for (index, candidate) in state.candidates.enumerated() {
-            let button = UIButton(type: .system)
-            button.setTitle(candidate.text, for: .normal)
-            button.titleLabel?.font = .systemFont(ofSize: 20)
-            button.tag = index
-            button.addTarget(self, action: #selector(candidateTapped), for: .touchUpInside)
-            candidateBar.addArrangedSubview(button)
+        if state.pageNo > 0 {
+            candidateBar.addArrangedSubview(pageBackKey)
         }
+        for (index, candidate) in state.candidates.enumerated() {
+            candidateBar.addArrangedSubview(makeCandidateButton(candidate, index: index))
+        }
+        if state.hasNextPage {
+            candidateBar.addArrangedSubview(pageForwardKey)
+        }
+    }
+
+    /// A candidate bar button: the Candidate's text, with its comment (when
+    /// the Schema emits one) trailing smaller and de-emphasized — the
+    /// desktop Rime presentation (spec user story 4).
+    private func makeCandidateButton(_ candidate: Engine.Candidate, index: Int) -> UIButton {
+        let button = UIButton(type: .system)
+        let title = NSMutableAttributedString(
+            string: candidate.text,
+            attributes: [.font: UIFont.systemFont(ofSize: 20)])
+        if let comment = candidate.comment {
+            title.append(NSAttributedString(
+                string: " " + comment,
+                attributes: [.font: UIFont.systemFont(ofSize: 13),
+                             .foregroundColor: UIColor.secondaryLabel]))
+        }
+        button.setAttributedTitle(title, for: .normal)
+        // Long "text + comment" pairs shrink to fit the bar instead of
+        // truncating into ellipses.
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.5
+        button.tag = index
+        button.addTarget(self, action: #selector(candidateTapped), for: .touchUpInside)
+        return button
+    }
+
+    /// One of the bar's page-turn keys (ticket 13). Sizing comes from
+    /// `KeyboardLayout` like every other key.
+    private func makeCandidatePageKey(image: String, action: Selector,
+                                      identifier: String) -> UIButton {
+        let button = UIButton(type: .system)
+        button.tintColor = .label
+        button.accessibilityIdentifier = identifier
+        button.addTarget(self, action: action, for: .touchUpInside)
+        iconKeys.append((button, image))
+        pinWidth(button) { $0.candidateChevronWidth }
+        return button
     }
 
     private func applyShift() {
@@ -350,6 +407,12 @@ final class KeyboardViewController: UIInputViewController {
         candidateBar.spacing = 6
         pinRowHeight(candidateBar)
         stack.addArrangedSubview(candidateBar)
+        pageBackKey = makeCandidatePageKey(
+            image: "chevron.left", action: #selector(pageBackTapped),
+            identifier: "candidate-page-back")
+        pageForwardKey = makeCandidatePageKey(
+            image: "chevron.right", action: #selector(pageForwardTapped),
+            identifier: "candidate-page-forward")
 
         qwertyLayer = buildQwertyLayer()
         numbersLayer = buildNumbersLayer()

@@ -6,9 +6,9 @@ import Rime
 /// start, because librime 1.17 tolerates the finalize → re-initialize cycle
 /// (verified by CorianderLifecycleTests). The interface covers the input
 /// path — Session lifecycle, key events, reading Composition/Candidates,
-/// Commit — plus in-Session Schema switching (ticket 12) and Deploy, which
-/// is Container App only (ADR-0001). No librime type crosses this
-/// interface.
+/// paging the Candidate list (ticket 13), Commit — plus in-Session Schema
+/// switching (ticket 12) and Deploy, which is Container App only
+/// (ADR-0001). No librime type crosses this interface.
 final class Engine {
     /// A key event delivered to the Session. `code` follows X11 keysym
     /// values (printable ASCII maps 1:1); `modifiers` is librime's mask.
@@ -49,6 +49,10 @@ final class Engine {
     struct InputState: Equatable {
         var composition = ""
         var candidates: [Candidate] = []
+        /// The page the Candidates are on (0-based).
+        var pageNo = 0
+        /// Whether a further page of Candidates exists.
+        var hasNextPage = false
     }
 
     enum StartError: Error {
@@ -224,7 +228,7 @@ final class Engine {
         return api.process_key(sessionID, key.code, key.modifiers) != 0
     }
 
-    /// The current Composition and first page of Candidates.
+    /// The current Composition and current page of Candidates.
     var input: InputState {
         guard sessionID != 0 else { return InputState() }
         var context = RimeContext()
@@ -236,6 +240,10 @@ final class Engine {
         if let preedit = context.composition.preedit {
             state.composition = String(cString: preedit)
         }
+        state.pageNo = Int(context.menu.page_no)
+        // The menu fields stay zeroed unless the Session has a Candidate
+        // menu at all, so is_last_page is meaningful only with Candidates.
+        state.hasNextPage = context.menu.num_candidates > 0 && context.menu.is_last_page == 0
         if let candidates = context.menu.candidates {
             for index in 0..<Int(context.menu.num_candidates) {
                 let candidate = candidates[index]
@@ -253,6 +261,22 @@ final class Engine {
     func selectCandidate(at index: Int) -> Bool {
         guard sessionID != 0 else { return false }
         return api.select_candidate_on_current_page(sessionID, index) != 0
+    }
+
+    /// Turns to the next page of Candidates. False when there is none (no
+    /// menu, or already on the last page) — the page then stays put (probed).
+    @discardableResult
+    func nextPage() -> Bool {
+        guard sessionID != 0 else { return false }
+        return api.change_page(sessionID, 0) != 0
+    }
+
+    /// Turns back to the previous page of Candidates. False on the first
+    /// page — the page then stays put (probed).
+    @discardableResult
+    func previousPage() -> Bool {
+        guard sessionID != 0 else { return false }
+        return api.change_page(sessionID, 1) != 0
     }
 
     /// Takes the pending Commit, if any. A Commit is produced when a
