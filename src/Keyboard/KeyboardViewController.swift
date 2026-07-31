@@ -1,19 +1,61 @@
 import UIKit
 
-/// The MVP keyboard input path (ticket 08): letter keys feed the Engine, the
-/// Composition renders inline in the host app, a candidate bar shows the
-/// current page of Candidates, and selection commits into the host app. The
-/// 方案 key (ticket 12) opens the schema menu, switching Schemas within the
-/// current Session. The keyboard is a pure forwarder — every key goes
-/// through `processKey` and Commits are drained from the Engine; key
-/// semantics (space selects first Candidate, Return commits raw input,
-/// Backspace edits the Composition) live in the Rime configuration, not
-/// here. The Session is long-lived (one per extension process, per spec);
-/// a stale Composition is dropped on each presentation instead.
+/// The keyboard's input path (tickets 08, 12) and iPhone portrait layout
+/// (ticket 22). Letter keys feed the Engine, the Composition renders
+/// inline in the host app, a candidate bar shows the current page of
+/// Candidates, and selection commits into the host app. The layout follows
+/// iOS-native typing chrome — QWERTY geometry with a 123 numbers/symbols
+/// layer, shift with lowercase/uppercase/caps-lock states, and key-press
+/// popups — all derived proportionally from the keyboard width (see
+/// `KeyboardLayout`). The 方案 key opens the schema menu, switching
+/// Schemas within the current Session. The keyboard is a pure forwarder —
+/// every key goes through `processKey` and Commits are drained from the
+/// Engine; key semantics (space selects first Candidate, Return commits
+/// raw input, Backspace edits the Composition, punctuation shape) live in
+/// the Rime configuration, not here. The Session is long-lived (one per
+/// extension process, per spec); a stale Composition is dropped on each
+/// presentation instead.
 final class KeyboardViewController: UIInputViewController {
+    /// Shift is keyboard-UI state only: it picks which character a letter
+    /// key forwards (`a` vs `A`); the Rime configuration owns what
+    /// uppercase input means.
+    private enum ShiftState {
+        case lowercase, uppercase, capsLock
+    }
+
     private var engine: Engine?
     private let stack = UIStackView()
     private let candidateBar = UIStackView()
+    private var qwertyLayer: UIStackView!
+    private var numbersLayer: UIStackView!
+
+    private var shiftState: ShiftState = .lowercase { didSet { applyShift() } }
+    private weak var shiftKey: KeyButton?
+    private var letterButtons: [KeyButton] = []
+    private var characterButtons: [KeyButton] = []
+    private var labelButtons: [KeyButton] = []
+    private var iconKeys: [(button: KeyButton, image: String)] = []
+
+    /// Constraints and stacks whose constants track the keyboard width;
+    /// re-resolved in `viewDidLayoutSubviews` from `KeyboardLayout`.
+    private var widthSpecs: [(constraint: NSLayoutConstraint, resolve: (KeyboardLayout) -> CGFloat)] = []
+    private var rowHeightConstraints: [NSLayoutConstraint] = []
+    private var keyGapStacks: [UIStackView] = []
+    private var stackLeading: NSLayoutConstraint?
+    private var stackTrailing: NSLayoutConstraint?
+    private var heightConstraint: NSLayoutConstraint?
+    private var symbolPointSize: CGFloat = 16
+    private var laidOutWidth: CGFloat = 0
+
+    /// Character keys use the native white keycaps that gray out while
+    /// pressed; function keys sit one step darker and flip when pressed
+    /// (the flip goes lighter in dark mode).
+    private static let characterIdle = UIColor.systemBackground
+    private static let characterPressed = UIColor.systemGray2
+    private static let functionIdle = UIColor.systemGray2
+    private static let functionPressed = UIColor(dynamicProvider: { traits in
+        traits.userInterfaceStyle == .dark ? .systemGray : .systemBackground
+    })
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -33,10 +75,45 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // A new presentation may follow a different text field: drop any
-        // stale Composition before typing resumes.
+        // stale Composition before typing resumes. Shift likewise reopens
+        // in lowercase, matching the native keyboard.
         engine?.clearComposition()
+        shiftState = .lowercase
         reloadSessionIfDeployed()
         refresh()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let width = view.bounds.width
+        guard width > 0, width != laidOutWidth else { return }
+        laidOutWidth = width
+        let layout = KeyboardLayout(width: width)
+        stack.spacing = layout.rowGap
+        qwertyLayer.spacing = layout.rowGap
+        numbersLayer.spacing = layout.rowGap
+        for rowStack in keyGapStacks { rowStack.spacing = layout.keyGap }
+        for spec in widthSpecs { spec.constraint.constant = spec.resolve(layout) }
+        for constraint in rowHeightConstraints { constraint.constant = layout.rowHeight }
+        stackLeading?.constant = layout.sideMargin
+        stackTrailing?.constant = -layout.sideMargin
+        // The stack's bottom anchors inside the safe area, so the fixed
+        // content height must ride above any home-indicator inset.
+        heightConstraint?.constant = layout.totalHeight + view.safeAreaInsets.bottom
+        symbolPointSize = layout.symbolPointSize
+        for iconKey in iconKeys {
+            iconKey.button.setImage(UIImage(
+                systemName: iconKey.image,
+                withConfiguration: UIImage.SymbolConfiguration(pointSize: layout.symbolPointSize)),
+                for: .normal)
+        }
+        for button in letterButtons + characterButtons {
+            button.titleLabel?.font = .systemFont(ofSize: layout.glyphFontSize)
+        }
+        for button in labelButtons {
+            button.titleLabel?.font = .systemFont(ofSize: layout.labelFontSize)
+        }
+        applyShift()
     }
 
     /// Picks up artifacts from a Deploy that ran while this keyboard process
@@ -55,11 +132,54 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: Key handling
 
-    @objc private func letterTapped(_ sender: UIButton) {
-        guard let character = sender.title(for: .normal)?.first,
+    /// Letters always go through the Engine, even with no Composition —
+    /// the Session decides whether one starts.
+    @objc private func letterTapped(_ sender: KeyButton) {
+        guard let text = sender.forwardText, let character = text.first,
               let key = Engine.Key(character: character) else { return }
         engine?.processKey(key)
+        drainCommit()
+        // Native behavior: one shifted letter drops back to lowercase
+        // unless caps lock is on.
+        if shiftState == .uppercase { shiftState = .lowercase }
         refresh()
+    }
+
+    /// Digits, symbols, and the space-bar punctuation.
+    @objc private func characterTapped(_ sender: KeyButton) {
+        guard let text = sender.forwardText, let character = text.first else { return }
+        forwardCharacter(character, literal: text)
+    }
+
+    /// Non-letter keys are forwarded to the Session while a Composition is
+    /// active and typed literally otherwise. A character the Session
+    /// declines — the baseline config binds none for `。` (probed) — first
+    /// commits the first Candidate through the config's space binding,
+    /// matching what its bound punctuation keys do (probed), so the key
+    /// never dies mid-Composition.
+    private func forwardCharacter(_ character: Character, literal: String) {
+        if let engine, !engine.input.composition.isEmpty {
+            if engine.processKey(key(for: character)) {
+                drainCommit()
+            } else {
+                engine.processKey(.space)
+                drainCommit()
+                textDocumentProxy.insertText(literal)
+            }
+        } else {
+            textDocumentProxy.insertText(literal)
+        }
+        refresh()
+    }
+
+    /// The Engine key for a character: printable ASCII maps 1:1 onto X11
+    /// keysyms; anything else uses the X11 Unicode zone
+    /// (0x01000000 | code point) so a configuration that binds the
+    /// character still owns its semantics.
+    private func key(for character: Character) -> Engine.Key {
+        if let key = Engine.Key(character: character) { return key }
+        let scalar = character.unicodeScalars.first.map { Int32($0.value) } ?? 0
+        return Engine.Key(code: 0x01000000 | scalar)
     }
 
     @objc private func candidateTapped(_ sender: UIButton) {
@@ -83,6 +203,24 @@ final class KeyboardViewController: UIInputViewController {
 
     @objc private func returnTapped() {
         forwardOrInsert(.return, "\n")
+    }
+
+    /// Single-tap cycles lowercase ⇄ uppercase (and clears caps lock);
+    /// double-tap locks caps.
+    @objc private func shiftTapped(_ sender: UIControl, event: UIEvent) {
+        if (event.touches(for: sender)?.first?.tapCount ?? 1) > 1 {
+            shiftState = .capsLock
+        } else {
+            switch shiftState {
+            case .lowercase: shiftState = .uppercase
+            case .uppercase, .capsLock: shiftState = .lowercase
+            }
+        }
+    }
+
+    @objc private func layerTapped() {
+        numbersLayer.isHidden.toggle()
+        qwertyLayer.isHidden.toggle()
     }
 
     /// Forwards `key` to the Engine while a Composition is in progress
@@ -125,90 +263,227 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    private func applyShift() {
+        let shifted = shiftState != .lowercase
+        for button in letterButtons {
+            button.forwardText = shifted
+                ? button.forwardText?.uppercased()
+                : button.forwardText?.lowercased()
+        }
+        let image: String
+        switch shiftState {
+        case .lowercase: image = "shift"
+        case .uppercase: image = "shift.fill"
+        case .capsLock: image = "capslock.fill"
+        }
+        shiftKey?.setImage(UIImage(
+            systemName: image,
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: symbolPointSize)),
+            for: .normal)
+    }
+
     // MARK: UI construction
 
     private func buildKeyboard() {
         view.backgroundColor = .secondarySystemBackground
         stack.axis = .vertical
-        stack.distribution = .fillEqually
-        stack.spacing = 6
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
+        let leading = stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 3)
+        let trailing = stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -3)
+        let height = view.heightAnchor.constraint(equalToConstant: 280)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
+            leading,
+            trailing,
             stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -4),
-            view.heightAnchor.constraint(equalToConstant: 280),
+            height,
         ])
+        stackLeading = leading
+        stackTrailing = trailing
+        heightConstraint = height
 
         candidateBar.axis = .horizontal
         candidateBar.distribution = .fillEqually
         candidateBar.spacing = 6
+        pinRowHeight(candidateBar)
         stack.addArrangedSubview(candidateBar)
 
-        for row in ["qwertyuiop", "asdfghjkl", "zxcvbnm"] {
-            stack.addArrangedSubview(makeRow(row.map(String.init), action: #selector(letterTapped)))
-        }
-        stack.addArrangedSubview(makeFunctionRow())
+        qwertyLayer = buildQwertyLayer()
+        numbersLayer = buildNumbersLayer()
+        numbersLayer.isHidden = true
+        stack.addArrangedSubview(qwertyLayer)
+        stack.addArrangedSubview(numbersLayer)
+        applyShift()
     }
 
-    private func makeRow(_ titles: [String], action: Selector) -> UIStackView {
-        let row = UIStackView()
-        row.axis = .horizontal
-        row.distribution = .fillEqually
-        row.spacing = 6
-        for title in titles {
-            row.addArrangedSubview(makeKey(title: title, action: action))
-        }
-        return row
+    private func buildQwertyLayer() -> UIStackView {
+        let row1 = makeRow("qwertyuiop".map { makeLetterKey($0) })
+        let row2 = makeRow([makeSpacer({ $0.rowTwoInset })]
+            + "asdfghjkl".map { makeLetterKey($0) }
+            + [makeSpacer({ $0.rowTwoInset })])
+
+        let shift = makeFunctionKey(image: "shift", action: #selector(shiftTapped(_:event:)))
+        shiftKey = shift
+        pinWidth(shift) { $0.rowThreeFlank }
+        let backspace = makeFunctionKey(image: "delete.backward", action: #selector(backspaceTapped))
+        pinWidth(backspace) { $0.rowThreeFlank }
+        let row3 = makeRow([shift as UIView] + "zxcvbnm".map { makeLetterKey($0) } + [backspace])
+
+        return makeLayer(rows: [row1, row2, row3, makeFunctionRow(lettersLayer: true)])
     }
 
-    private func makeFunctionRow() -> UIStackView {
-        let row = UIStackView()
-        row.axis = .horizontal
-        row.spacing = 6
+    private func buildNumbersLayer() -> UIStackView {
+        let row1 = makeRow("1234567890".map { makeCharacterKey(String($0)) })
+        let row2 = makeRow(["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""]
+            .map { makeCharacterKey($0) })
+        // The punct keys share the row's remaining width equally, like the
+        // native number layer; backspace keeps its QWERTY slot.
+        let punctKeys = UIStackView(arrangedSubviews:
+            [".", ",", "?", "!", "'"].map { makeCharacterKey($0, pinned: false) })
+        punctKeys.axis = .horizontal
+        punctKeys.distribution = .fillEqually
+        keyGapStacks.append(punctKeys)
+        let backspace = makeFunctionKey(image: "delete.backward", action: #selector(backspaceTapped))
+        pinWidth(backspace) { $0.rowThreeFlank }
+        let row3 = makeRow([makeSpacer({ $0.rowThreeFlank }), punctKeys, backspace])
+
+        return makeLayer(rows: [row1, row2, row3, makeFunctionRow(lettersLayer: false)])
+    }
+
+    private func makeFunctionRow(lettersLayer: Bool) -> UIStackView {
+        let layerKey = makeLabelKey(lettersLayer ? "123" : "ABC", action: #selector(layerTapped))
+        pinWidth(layerKey) { $0.letterWidth }
 
         // The globe key required by App Store guideline 4.4.1: cycles
         // keyboards on tap, shows the input-mode menu on long press.
-        let globe = makeKey(image: "globe",
-                            action: #selector(handleInputModeList(from:with:)),
-                            events: .allTouchEvents)
-        globe.widthAnchor.constraint(equalToConstant: 48).isActive = true
-        row.addArrangedSubview(globe)
+        let globe = makeFunctionKey(image: "globe",
+                                    action: #selector(handleInputModeList(from:with:)),
+                                    events: .allTouchEvents)
+        pinWidth(globe) { $0.letterWidth }
 
-        // The schema menu (ticket 12): lists exactly the deployed/enabled
-        // Schemas; selection switches within the current Session. The
-        // deferred element must be `uncached` — the plain provider variant
-        // realizes its items only once and reuses them, freezing the
-        // checkmark (and a re-Deployed list) at first open; found in the
-        // ticket 12 device smoke.
-        let schema = makeKey(title: "方案", action: nil)
-        schema.widthAnchor.constraint(equalToConstant: 56).isActive = true
-        schema.showsMenuAsPrimaryAction = true
-        schema.menu = UIMenu(children: [
+        let comma = makeCharacterKey(",")
+        let space = makeLabelKey("空格", action: #selector(spaceTapped), characterStyle: true)
+        pinWidth(space) { $0.spaceWidth }
+        let period = makeCharacterKey("。")
+        let returnKey = makeFunctionKey(image: "return", action: #selector(returnTapped))
+        pinWidth(returnKey) { $0.returnWidth }
+        return makeRow([layerKey, globe, makeSchemaKey(), comma, space, period, returnKey])
+    }
+
+    /// The schema menu key (ticket 12), kept one tap away on the function
+    /// row of both layers. It lists exactly the deployed/enabled Schemas;
+    /// selection switches within the current Session. The deferred element
+    /// must be `uncached` — the plain provider variant realizes its items
+    /// only once and reuses them, freezing the checkmark (and a re-Deployed
+    /// list) at first open; found in the ticket 12 device smoke.
+    private func makeSchemaKey() -> UIView {
+        let button = KeyButton(idle: Self.functionIdle, pressed: Self.functionPressed)
+        button.setTitle("方案", for: .normal)
+        button.setTitleColor(.label, for: .normal)
+        button.showsMenuAsPrimaryAction = true
+        button.menu = UIMenu(children: [
             UIDeferredMenuElement.uncached { [weak self] completion in
                 completion(self?.schemaMenuActions() ?? [])
             },
         ])
-        row.addArrangedSubview(schema)
+        labelButtons.append(button)
+        pinWidth(button) { $0.schemaWidth }
+        return button
+    }
 
-        let backspace = makeKey(image: "delete.backward", action: #selector(backspaceTapped))
-        backspace.widthAnchor.constraint(equalToConstant: 48).isActive = true
-        row.addArrangedSubview(backspace)
+    private func makeLetterKey(_ letter: Character) -> UIView {
+        let button = KeyButton(idle: Self.characterIdle, pressed: Self.characterPressed)
+        // Native keycaps always show the uppercase glyph; shift changes
+        // only which character is forwarded.
+        button.setTitle(String(letter).uppercased(), for: .normal)
+        button.setTitleColor(.label, for: .normal)
+        button.forwardText = String(letter)
+        button.popupText = String(letter).uppercased()
+        button.popupHost = view
+        button.addTarget(self, action: #selector(letterTapped(_:)), for: .touchUpInside)
+        letterButtons.append(button)
+        pinWidth(button) { $0.letterWidth }
+        return button
+    }
 
-        row.addArrangedSubview(makeKey(title: "空格", action: #selector(spaceTapped)))
+    private func makeCharacterKey(_ character: String, pinned: Bool = true) -> UIView {
+        let button = KeyButton(idle: Self.characterIdle, pressed: Self.characterPressed)
+        button.setTitle(character, for: .normal)
+        button.setTitleColor(.label, for: .normal)
+        button.forwardText = character
+        button.popupText = character
+        button.popupHost = view
+        button.addTarget(self, action: #selector(characterTapped(_:)), for: .touchUpInside)
+        characterButtons.append(button)
+        if pinned { pinWidth(button) { $0.letterWidth } }
+        return button
+    }
 
-        let `return` = makeKey(image: "return", action: #selector(returnTapped))
-        `return`.widthAnchor.constraint(equalToConstant: 72).isActive = true
-        row.addArrangedSubview(`return`)
+    private func makeFunctionKey(image: String, action: Selector,
+                                 events: UIControl.Event = .touchUpInside) -> KeyButton {
+        let button = KeyButton(idle: Self.functionIdle, pressed: Self.functionPressed)
+        button.tintColor = .label
+        button.addTarget(self, action: action, for: events)
+        iconKeys.append((button, image))
+        return button
+    }
+
+    private func makeLabelKey(_ title: String, action: Selector,
+                              characterStyle: Bool = false) -> UIView {
+        let button = KeyButton(
+            idle: characterStyle ? Self.characterIdle : Self.functionIdle,
+            pressed: characterStyle ? Self.characterPressed : Self.functionPressed)
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(.label, for: .normal)
+        button.addTarget(self, action: action, for: .touchUpInside)
+        labelButtons.append(button)
+        return button
+    }
+
+    /// An invisible spacer holding a key's slot where a row leaves it
+    /// empty (row 2's inset, the number layer's missing shift key).
+    private func makeSpacer(_ resolve: @escaping (KeyboardLayout) -> CGFloat) -> UIView {
+        let spacer = UIView()
+        spacer.isUserInteractionEnabled = false
+        return pinWidth(spacer, resolve)
+    }
+
+    private func makeRow(_ keys: [UIView]) -> UIStackView {
+        let row = UIStackView(arrangedSubviews: keys)
+        row.axis = .horizontal
+        keyGapStacks.append(row)
+        pinRowHeight(row)
         return row
+    }
+
+    private func makeLayer(rows: [UIStackView]) -> UIStackView {
+        let layer = UIStackView(arrangedSubviews: rows)
+        layer.axis = .vertical
+        return layer
+    }
+
+    /// Registers a width constraint re-resolved from `KeyboardLayout` on
+    /// every layout pass.
+    @discardableResult
+    private func pinWidth(_ view: UIView,
+                          _ resolve: @escaping (KeyboardLayout) -> CGFloat) -> UIView {
+        let constraint = view.widthAnchor.constraint(equalToConstant: 0)
+        constraint.isActive = true
+        widthSpecs.append((constraint, resolve))
+        return view
+    }
+
+    private func pinRowHeight(_ view: UIView) {
+        let constraint = view.heightAnchor.constraint(equalToConstant: 42)
+        constraint.isActive = true
+        rowHeightConstraints.append(constraint)
     }
 
     /// One menu action per enabled Schema, the Session's current one
     /// checkmarked. Selecting one switches within the current Session;
-    /// librime drops any in-progress Composition (probed), which `refresh`
-    /// then unmarks.
+    /// librime drops any in-progress Composition on switch (probed), which
+    /// `refresh` then unmarks.
     private func schemaMenuActions() -> [UIAction] {
         guard let engine else { return [] }
         let current = engine.currentSchemaID
@@ -221,26 +496,12 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    private func makeKey(title: String? = nil, image: String? = nil,
-                         action: Selector?, events: UIControl.Event = .touchUpInside) -> UIButton {
-        let button = UIButton(type: .system)
-        if let title {
-            button.setTitle(title, for: .normal)
-            button.titleLabel?.font = .systemFont(ofSize: 20)
-        }
-        if let image {
-            button.setImage(UIImage(systemName: image), for: .normal)
-        }
-        button.tintColor = .label
-        button.backgroundColor = .systemBackground
-        button.layer.cornerRadius = 5
-        if let action {
-            button.addTarget(self, action: action, for: events)
-        }
-        return button
-    }
-
+    /// With no Engine there is nothing to type on: hide the typing UI and
+    /// show only the hint (the rows' pinned heights leave the label no room).
     private func showSetupHint() {
+        candidateBar.isHidden = true
+        qwertyLayer.isHidden = true
+        numbersLayer.isHidden = true
         let label = UILabel()
         label.text = "Open the Coriander app to finish setup."
         label.textAlignment = .center
