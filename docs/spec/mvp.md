@@ -36,6 +36,7 @@ Coriander ships a Container App plus one Keyboard Extension, each embedding its 
 26. As a user, I want UI-layer preferences (Layout choice, keyboard feel), so that I can tune the keyboard to my liking.
 27. As a user, I want to clear my User Dictionary from the Container App, so that I can reset learned words.
 28. As a reviewer, I want the App Store privacy details to match actual behavior (no network, optional Full Access for local writes), so that the claims are verifiable.
+29. As a user, I want the keyboard's typing chrome to match the platform's native keyboard (geometry, key-press feedback, shift and symbol layers, punctuation access), so that typing feels familiar instead of foreign.
 
 ## Implementation Decisions
 
@@ -51,9 +52,9 @@ Coriander ships a Container App plus one Keyboard Extension, each embedding its 
 - **User Dictionary**: the Keyboard Extension is its sole writer during input; only one Engine holds it open at a time across the system. Persisting it requires Full Access; without Full Access the keyboard runs read-only (learning disabled, no crash).
 - **Full Access**: the extension declares `RequestsOpenAccess` so users can opt in; onboarding and privacy screens explain that it is used solely for local writes. Neither target contains any networking code.
 - **Settings**: Rime-layer settings (schema enable/order) write `default.custom.yaml` in the Config Folder and trigger a Deploy; UI-layer settings (Layout, keyboard feel) are shared with the keyboard via App Group user defaults.
-- **Layouts**: iPhone portrait/landscape and iPad (including floating keyboard) adaptations. No theme/skin system in the MVP.
+- **Layouts**: the iPhone portrait layout follows the iOS native QWERTY geometry, press feedback, and layer structure (ticket 22); iPhone landscape and iPad (including floating keyboard) adapt that layout system (ticket 16). No theme/skin system in the MVP.
 - **Ticket 1 — platform validation** (acceptance criteria measured on a real device, harness kept on a throwaway branch): whether App Groups work on-device under a free Personal Team or require a paid program; App Group read/write behavior with and without Full Access; librime memory footprint and cold-start time inside the extension; baseline seed duration; Deploy duration. Outcomes may adjust ADR-0001/0003 details but not their shape.
-- Tickets are split from this spec with blocking edges (GitHub native issue dependencies) via `/to-tickets`.
+- Tickets are split from this spec via `/to-tickets` and tracked as local Markdown files under `docs/tickets/`, each declaring its blocking edges.
 
 ## Testing Decisions
 
