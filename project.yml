@@ -101,19 +101,6 @@ targets:
       base:
         << : *rimeSettings
         PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander.lifecycle-tests
-  CorianderProbeUITests:
-    type: bundle.ui-testing
-    platform: iOS
-    deploymentTarget: "16.0"
-    sources:
-      - path: tests/ProbeUITests
-    settings:
-      base:
-        CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: 977W8XTYW6
-        GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: com.gaotity.coriander.probe-uitests
-        TEST_TARGET_NAME: Coriander
 schemes:
   Coriander:
     build:
@@ -129,4 +116,3 @@ schemes:
       targets:
         - CorianderEngineTests
         - CorianderLifecycleTests
-        - CorianderProbeUITests

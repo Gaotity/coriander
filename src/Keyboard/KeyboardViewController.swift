@@ -81,25 +81,8 @@ final class KeyboardViewController: UIInputViewController {
         engine?.clearComposition()
         shiftState = .lowercase
         applySettings()
-        probeLog("PROBE16 appear showsKeyPopup=\(KeyboardSettings().showsKeyPopup) engine=\(engine != nil)")
         reloadSessionIfDeployed()
         refresh()
-    }
-
-    /// PROBE16: temporary probe, removed before merge. Appends a line to
-    /// the App Group container so simulator runs can be read externally.
-    private func probeLog(_ message: String) {
-        guard let url = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: RimeDirectory.groupID)?
-            .appendingPathComponent("probe16.log") else { return }
-        let line = message + "\n"
-        if let handle = try? FileHandle(forWritingTo: url) {
-            handle.seekToEndOfFile()
-            handle.write(Data(line.utf8))
-            try? handle.close()
-        } else {
-            try? line.write(to: url, atomically: false, encoding: .utf8)
-        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -109,12 +92,6 @@ final class KeyboardViewController: UIInputViewController {
         laidOutWidth = width
         let layout = KeyboardLayout(
             width: width, form: layoutForm(width: width), portraitWidth: portraitWidth)
-        probeLog("PROBE16 layout form=\(layout.form) width=\(width) viewH=\(view.bounds.height) "
-            + "safe=\(view.safeAreaInsets) screen=\(UIScreen.main.bounds.size) "
-            + "idiom=\(traitCollection.userInterfaceIdiom.rawValue) "
-            + "vSC=\(traitCollection.verticalSizeClass.rawValue) hSC=\(traitCollection.horizontalSizeClass.rawValue) "
-            + "rowH=\(layout.rowHeight) rowGap=\(layout.rowGap) letterW=\(layout.letterWidth) "
-            + "sideM=\(layout.sideMargin) keyGap=\(layout.keyGap) totalH=\(layout.totalHeight)")
         stack.spacing = layout.rowGap
         qwertyLayer.spacing = layout.rowGap
         numbersLayer.spacing = layout.rowGap
