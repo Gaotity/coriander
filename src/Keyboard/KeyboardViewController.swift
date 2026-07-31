@@ -1,12 +1,13 @@
 import UIKit
 
-/// The keyboard's input path (tickets 08, 12) and iPhone portrait layout
-/// (ticket 22). Letter keys feed the Engine, the Composition renders
+/// The keyboard's input path (tickets 08, 12) and Layout (tickets 22, 16).
+/// Letter keys feed the Engine, the Composition renders
 /// inline in the host app, a candidate bar shows the current page of
 /// Candidates, and selection commits into the host app. The layout follows
 /// iOS-native typing chrome — QWERTY geometry with a 123 numbers/symbols
 /// layer, shift with lowercase/uppercase/caps-lock states, and key-press
-/// popups — all derived proportionally from the keyboard width (see
+/// popups — all derived proportionally per presentation: iPhone portrait,
+/// iPhone landscape, iPad full-size, and iPad floating (see
 /// `KeyboardLayout`). The 方案 key opens the schema menu, switching
 /// Schemas within the current Session. The keyboard is a pure forwarder —
 /// every key goes through `processKey` and Commits are drained from the
@@ -46,6 +47,7 @@ final class KeyboardViewController: UIInputViewController {
     private var heightConstraint: NSLayoutConstraint?
     private var symbolPointSize: CGFloat = 16
     private var laidOutWidth: CGFloat = 0
+    private var laidOutBottomInset: CGFloat = 0
 
     /// Character keys use the native white keycaps that gray out while
     /// pressed; function keys sit one step darker and flip when pressed
@@ -79,6 +81,7 @@ final class KeyboardViewController: UIInputViewController {
         // in lowercase, matching the native keyboard.
         engine?.clearComposition()
         shiftState = .lowercase
+        applySettings()
         reloadSessionIfDeployed()
         refresh()
     }
@@ -86,9 +89,17 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let width = view.bounds.width
-        guard width > 0, width != laidOutWidth else { return }
+        // The geometry depends on the width and the bottom safe-area inset
+        // (the home-indicator side moves when the device flips 180°); side
+        // insets are always zero for the keyboard window (probed) — like
+        // the native keyboard, rows span the full width in landscape.
+        guard width > 0,
+              width != laidOutWidth || view.safeAreaInsets.bottom != laidOutBottomInset
+        else { return }
         laidOutWidth = width
-        let layout = KeyboardLayout(width: width)
+        laidOutBottomInset = view.safeAreaInsets.bottom
+        let layout = KeyboardLayout(
+            width: width, form: layoutForm(width: width), portraitWidth: portraitWidth)
         stack.spacing = layout.rowGap
         qwertyLayer.spacing = layout.rowGap
         numbersLayer.spacing = layout.rowGap
@@ -127,6 +138,37 @@ final class KeyboardViewController: UIInputViewController {
         engine.endSession()
         if engine.startSession() {
             KeyboardEngine.sessionBuiltAt = current
+        }
+    }
+
+    // MARK: Layout forms + settings bridge (ticket 16)
+
+    /// Which presentation the geometry adapts to. iPhone landscape is the
+    /// compact-vertical size class; on iPad the idiom never changes, but
+    /// the floating presentation (like other compact-width cases) is far
+    /// narrower than any docked iPad keyboard, so width discriminates —
+    /// 500pt sits between the floating panel (~320pt) and the smallest
+    /// full-size iPad width (744pt).
+    private func layoutForm(width: CGFloat) -> KeyboardLayout.Form {
+        if traitCollection.userInterfaceIdiom == .pad {
+            return width < 500 ? .padFloating : .padFull
+        }
+        return traitCollection.verticalSizeClass == .compact ? .phoneLandscape : .phonePortrait
+    }
+
+    /// The device's portrait width: the screen's short side regardless of
+    /// orientation. Landscape row heights derive from it so keys track the
+    /// device instead of stretching with the long dimension.
+    private var portraitWidth: CGFloat {
+        min(UIScreen.main.bounds.width, UIScreen.main.bounds.height)
+    }
+
+    /// Re-reads the settings bridge on every presentation so changes made
+    /// in the Container App apply without a Session restart.
+    private func applySettings() {
+        let settings = KeyboardSettings()
+        for button in letterButtons + characterButtons {
+            button.popupEnabled = settings.showsKeyPopup
         }
     }
 
