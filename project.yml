@@ -9,6 +9,8 @@ targets:
     sources:
       - path: src/App
       - path: src/Engine
+      - path: src/App/PrivacyInfo.xcprivacy
+        buildPhase: resources
       - path: vendor/rime-baseline
         type: folder
     info:
@@ -19,6 +21,7 @@ targets:
         UILaunchScreen_Generation: YES
         UIFileSharingEnabled: YES
         LSSupportsOpeningDocumentsInPlace: YES
+        ITSAppUsesNonExemptEncryption: NO
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
     entitlements:
       path: src/App/Coriander.entitlements
@@ -45,11 +48,14 @@ targets:
     sources:
       - path: src/Keyboard
       - path: src/Engine
+      - path: src/Keyboard/PrivacyInfo.xcprivacy
+        buildPhase: resources
     info:
       path: src/Keyboard/Info.plist
       properties:
         CFBundleName: CorianderKeyboard
         CFBundleDisplayName: Coriander
+        ITSAppUsesNonExemptEncryption: NO
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
           NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).KeyboardViewController"
