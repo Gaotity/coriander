@@ -87,6 +87,10 @@ struct KeyboardLayout {
             - returnWidth - 6 * keyGap
     }
 
+    /// Width of the candidate bar's page-turn keys (ticket 13): narrower
+    /// than a letter key, tracking the bar's own height.
+    var candidateChevronWidth: CGFloat { rowHeight * 0.75 }
+
     /// Keyboard height: candidate bar + four key rows plus padding.
     var totalHeight: CGFloat {
         6 + 5 * rowHeight + 4 * rowGap + 4
