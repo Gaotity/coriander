@@ -34,4 +34,18 @@ final class KeyboardSettingsTests: XCTestCase {
         KeyboardSettings(defaults: makeDefaults()).showsKeyPopup = true
         XCTAssertTrue(KeyboardSettings(defaults: makeDefaults()).showsKeyPopup)
     }
+
+    func testKeyboardHeightDefaultsToStandardWhenUnset() {
+        XCTAssertEqual(KeyboardSettings(defaults: makeDefaults()).keyboardHeight, .standard)
+    }
+
+    func testKeyboardHeightCompactRoundTrips() {
+        KeyboardSettings(defaults: makeDefaults()).keyboardHeight = .compact
+        XCTAssertEqual(KeyboardSettings(defaults: makeDefaults()).keyboardHeight, .compact)
+    }
+
+    func testKeyboardHeightExplicitStandardPersists() {
+        KeyboardSettings(defaults: makeDefaults()).keyboardHeight = .standard
+        XCTAssertEqual(KeyboardSettings(defaults: makeDefaults()).keyboardHeight, .standard)
+    }
 }

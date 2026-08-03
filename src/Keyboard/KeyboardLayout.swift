@@ -28,11 +28,16 @@ struct KeyboardLayout {
     let form: Form
     /// The device's portrait width; only `phoneLandscape` metrics use it.
     let portraitWidth: CGFloat
+    /// The ticket 17 Layout choice: compact shrinks the rows (and, through
+    /// them, every derived font and the total height) for more screen room.
+    let compact: Bool
 
-    init(width: CGFloat, form: Form = .phonePortrait, portraitWidth: CGFloat? = nil) {
+    init(width: CGFloat, form: Form = .phonePortrait, portraitWidth: CGFloat? = nil,
+         compact: Bool = false) {
         self.width = width
         self.form = form
         self.portraitWidth = portraitWidth ?? width
+        self.compact = compact
     }
 
     /// The reference width horizontal metrics scale from: the 375pt
@@ -56,13 +61,15 @@ struct KeyboardLayout {
     }
     /// Height of every row: the four key rows and the candidate bar.
     var rowHeight: CGFloat {
+        let base: CGFloat
         switch form {
-        case .phonePortrait, .padFloating: return width * 42 / 375
+        case .phonePortrait, .padFloating: base = width * 42 / 375
         // Native landscape rows run ~33pt where portrait's are 42pt.
-        case .phoneLandscape: return portraitWidth * 33 / 375
+        case .phoneLandscape: base = portraitWidth * 33 / 375
         // Native iPad rows run ~55pt at the 768pt reference width.
-        case .padFull: return width * 55 / 768
+        case .padFull: base = width * 55 / 768
         }
+        return compact ? base * 0.85 : base
     }
 
     /// The uniform letter-key width: ten letters plus gaps fill a row.

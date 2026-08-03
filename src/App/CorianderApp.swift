@@ -11,7 +11,6 @@ struct ContentView: View {
     @State private var busy = true
     @State private var status = "Preparing Rime data…"
     @State private var didRun = false
-    @State private var showsKeyPopup = KeyboardSettings().showsKeyPopup
     @State private var confirmsClear = false
 
     var body: some View {
@@ -36,12 +35,9 @@ struct ContentView: View {
                     confirmsClear = true
                 }
                 .disabled(busy)
-                // The settings bridge's one end-to-end setting (ticket 16);
-                // the full settings UI is ticket 17.
-                Toggle("Key popup", isOn: $showsKeyPopup)
-                    .onChange(of: showsKeyPopup) { newValue in
-                        KeyboardSettings().showsKeyPopup = newValue
-                    }
+                // Settings (ticket 17): Rime-layer schema list + UI-layer
+                // preferences; the key-popup toggle from ticket 16 moved here.
+                NavigationLink("Settings") { SettingsView() }
                 // The Full Access opt-in (ticket 14): local-write-only
                 // purpose, per ADR-0003.
                 NavigationLink("Full Access") { FullAccessOptInView() }

@@ -157,6 +157,62 @@ final class EngineTests: XCTestCase {
                       "typing broke after failed Deploy: \(engine.input.candidates.map(\.text))")
     }
 
+    /// Ticket 17: a broken schema that arrives via the Config Folder and is
+    /// enabled there must fail the Deploy by name. Before the refinement,
+    /// failedSchemas scanned only the shared side, so this failure was
+    /// silent — schema enable/disable makes the hole user-reachable.
+    func testDeployDetectsBrokenEnabledSchemaFromConfigFolder() throws {
+        let engine = try TestEngine.shared.get()
+        let directory = TestEngine.directory
+        let config = try makeConfigFolder()
+        defer {
+            try? FileManager.default.removeItem(
+                at: directory.user.appendingPathComponent("broken_probe.schema.yaml"))
+            try? FileManager.default.removeItem(
+                at: directory.user.appendingPathComponent("default.custom.yaml"))
+            try? engine.deploy()
+        }
+        try "garbage: [unclosed\n".write(
+            to: config.root.appendingPathComponent("broken_probe.schema.yaml"),
+            atomically: true, encoding: .utf8)
+        try "patch:\n  schema_list:\n    - schema: luna_pinyin\n    - schema: broken_probe\n"
+            .write(to: config.root.appendingPathComponent("default.custom.yaml"),
+                   atomically: true, encoding: .utf8)
+        _ = try config.sync(into: directory)
+
+        XCTAssertThrowsError(try engine.deploy()) { error in
+            guard case Engine.DeployError.schemasFailed(let failed) = error else {
+                return XCTFail("expected schemasFailed, got \(error)")
+            }
+            XCTAssertEqual(failed, ["broken_probe.schema.yaml"])
+        }
+    }
+
+    /// The refined check covers exactly what the Deploy compiled: a broken
+    /// schema source that is NOT enabled is librime's to ignore, so the
+    /// Deploy succeeds (scanning both sides' sources would flag it).
+    func testDeployIgnoresBrokenDisabledSchemaSource() throws {
+        let engine = try TestEngine.shared.get()
+        let directory = TestEngine.directory
+        let config = try makeConfigFolder()
+        defer {
+            try? FileManager.default.removeItem(
+                at: directory.user.appendingPathComponent("broken_probe.schema.yaml"))
+            try? FileManager.default.removeItem(
+                at: directory.user.appendingPathComponent("default.custom.yaml"))
+            try? engine.deploy()
+        }
+        try "garbage: [unclosed\n".write(
+            to: config.root.appendingPathComponent("broken_probe.schema.yaml"),
+            atomically: true, encoding: .utf8)
+        try "patch:\n  schema_list:\n    - schema: luna_pinyin\n"
+            .write(to: config.root.appendingPathComponent("default.custom.yaml"),
+                   atomically: true, encoding: .utf8)
+        _ = try config.sync(into: directory)
+
+        XCTAssertNoThrow(try engine.deploy())
+    }
+
     /// The Config Folder seed lands the schema_list switch once — a Files
     /// edit of it is never overwritten (last-write-wins per file).
     func testConfigFolderSeedsOnlyOnce() throws {
