@@ -14,25 +14,31 @@ struct ContentView: View {
     @State private var showsKeyPopup = KeyboardSettings().showsKeyPopup
 
     var body: some View {
-        VStack(spacing: 12) {
-            if busy { ProgressView() }
-            Text(status)
-                .font(.footnote)
-                .multilineTextAlignment(.center)
-            Button("Sync + Deploy", action: syncAndDeploy)
-                .disabled(busy)
-            // The settings bridge's one end-to-end setting (ticket 16);
-            // the full settings UI is ticket 17.
-            Toggle("Key popup", isOn: $showsKeyPopup)
-                .onChange(of: showsKeyPopup) { newValue in
-                    KeyboardSettings().showsKeyPopup = newValue
-                }
-        }
-        .padding()
-        .onAppear {
-            guard !didRun else { return }
-            didRun = true
-            run { RimeBootstrap.run() }
+        NavigationStack {
+            VStack(spacing: 12) {
+                if busy { ProgressView() }
+                Text(status)
+                    .font(.footnote)
+                    .multilineTextAlignment(.center)
+                Button("Sync + Deploy", action: syncAndDeploy)
+                    .disabled(busy)
+                // The settings bridge's one end-to-end setting (ticket 16);
+                // the full settings UI is ticket 17.
+                Toggle("Key popup", isOn: $showsKeyPopup)
+                    .onChange(of: showsKeyPopup) { newValue in
+                        KeyboardSettings().showsKeyPopup = newValue
+                    }
+                // The Full Access opt-in (ticket 14): local-write-only
+                // purpose, per ADR-0003.
+                NavigationLink("Full Access") { FullAccessOptInView() }
+            }
+            .padding()
+            .navigationTitle("Coriander")
+            .onAppear {
+                guard !didRun else { return }
+                didRun = true
+                run { RimeBootstrap.run() }
+            }
         }
     }
 
