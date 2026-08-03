@@ -45,6 +45,19 @@ struct RimeDirectory: Equatable {
         return true
     }
 
+    /// Names of the User Dictionaries on the user side — the `*.userdb`
+    /// LevelDB directories (e.g. ["luna_pinyin"]). A file scan; needs no
+    /// Engine. Probed: this is the complete persistent-user-state set —
+    /// `build/` is reproducible artifacts, `user.yaml`/`installation.yaml`
+    /// are deployment bookkeeping.
+    var userDictionaryNames: [String] {
+        let entries = (try? FileManager.default.contentsOfDirectory(atPath: user.path)) ?? []
+        return entries
+            .filter { $0.hasSuffix(".userdb") }
+            .map { String($0.dropLast(".userdb".count)) }
+            .sorted()
+    }
+
     /// When the last Deploy completed, per `user.yaml`'s `var/last_build_time`
     /// (written by librime's WorkspaceUpdate). The keyboard watches this to
     /// pick up artifacts Deployed by the Container App while it was warm.

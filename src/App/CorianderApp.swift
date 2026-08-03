@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var status = "Preparing Rime data…"
     @State private var didRun = false
     @State private var showsKeyPopup = KeyboardSettings().showsKeyPopup
+    @State private var confirmsClear = false
 
     var body: some View {
         NavigationStack {
@@ -22,6 +23,19 @@ struct ContentView: View {
                     .multilineTextAlignment(.center)
                 Button("Sync + Deploy", action: syncAndDeploy)
                     .disabled(busy)
+                // User Dictionary management (ticket 15).
+                Button("Export User Dictionary") {
+                    run("Exporting…", action: UserDictionaryActions.exportNow)
+                }
+                .disabled(busy)
+                Button("Restore User Dictionary") {
+                    run("Restoring…", action: UserDictionaryActions.restoreLatest)
+                }
+                .disabled(busy)
+                Button("Clear User Dictionary", role: .destructive) {
+                    confirmsClear = true
+                }
+                .disabled(busy)
                 // The settings bridge's one end-to-end setting (ticket 16);
                 // the full settings UI is ticket 17.
                 Toggle("Key popup", isOn: $showsKeyPopup)
@@ -34,6 +48,14 @@ struct ContentView: View {
             }
             .padding()
             .navigationTitle("Coriander")
+            .alert("Clear the User Dictionary?", isPresented: $confirmsClear) {
+                Button("Clear", role: .destructive) {
+                    run("Clearing…", action: UserDictionaryActions.clearNow)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Everything the User Dictionary has learned is removed. The keyboard keeps working and starts learning over.")
+            }
             .onAppear {
                 guard !didRun else { return }
                 didRun = true
