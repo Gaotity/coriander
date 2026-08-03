@@ -368,6 +368,19 @@ final class Engine {
         _ = api.clear_composition(sessionID)
     }
 
+    /// Syntax-checks one yaml source in memory via the config API's
+    /// `config_load_string` — no file, no Deploy. Import validates with this
+    /// BEFORE writing anything (ticket 21) because a Deploy silently
+    /// tolerates broken custom patches (probed, ticket 09). False also when
+    /// the Engine is shut down.
+    func validateYaml(_ yaml: String) -> Bool {
+        guard running else { return false }
+        var config = RimeConfig()
+        guard api.config_init(&config) != 0 else { return false }
+        defer { _ = api.config_close(&config) }
+        return yaml.withCString { api.config_load_string(&config, $0) != 0 }
+    }
+
     /// Exports the named User Dictionary to `destination` as librime's TSV
     /// dump (the levers `export_user_dict`) — the archive payload for Export
     /// (ticket 15). Probed alternatives and why they lost:

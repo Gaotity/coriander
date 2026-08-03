@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 @main
 struct CorianderApp: App {
@@ -12,6 +13,7 @@ struct ContentView: View {
     @State private var status = "Preparing Rime data…"
     @State private var didRun = false
     @State private var confirmsClear = false
+    @State private var pickingImport = false
 
     var body: some View {
         NavigationStack {
@@ -22,6 +24,12 @@ struct ContentView: View {
                     .multilineTextAlignment(.center)
                 Button("Sync + Deploy", action: syncAndDeploy)
                     .disabled(busy)
+                // Import (ticket 21): schema files or archives via document
+                // picker; the share sheet arrives via onOpenURL below.
+                Button("Import Schemas…") {
+                    pickingImport = true
+                }
+                .disabled(busy)
                 // User Dictionary management (ticket 15).
                 Button("Export User Dictionary") {
                     run("Exporting…", action: UserDictionaryActions.exportNow)
@@ -44,6 +52,20 @@ struct ContentView: View {
             }
             .padding()
             .navigationTitle("Coriander")
+            .fileImporter(isPresented: $pickingImport,
+                          allowedContentTypes: [.yaml, .zip, .data],
+                          allowsMultipleSelection: true) { result in
+                switch result {
+                case .success(let urls):
+                    run("Importing…") { ImportActions.importFiles(urls) }
+                case .failure(let error):
+                    status = "Import failed: \(error.localizedDescription)"
+                }
+            }
+            .onOpenURL { url in
+                guard ImportActions.canHandle(url) else { return }
+                run("Importing…") { ImportActions.importFiles([url]) }
+            }
             .alert("Clear the User Dictionary?", isPresented: $confirmsClear) {
                 Button("Clear", role: .destructive) {
                     run("Clearing…", action: UserDictionaryActions.clearNow)

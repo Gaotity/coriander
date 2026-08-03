@@ -23,6 +23,16 @@ targets:
         LSSupportsOpeningDocumentsInPlace: YES
         ITSAppUsesNonExemptEncryption: NO
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        # Share-sheet / "Open in" registration (ticket 21): offer Coriander
+        # for Rime yaml sources and zip archives. Alternate rank — the app
+        # imports them, it does not own the formats.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Rime Schema or Archive
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.yaml
+              - public.zip-archive
     entitlements:
       path: src/App/Coriander.entitlements
       properties:
