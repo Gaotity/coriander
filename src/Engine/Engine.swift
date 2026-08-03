@@ -76,6 +76,32 @@ final class Engine {
         case schemasFailed([String])
     }
 
+    /// A User Dictionary management failure (ticket 15). Container App only.
+    enum ManagementError: Error {
+        /// The Engine was already shut down.
+        case notRunning
+        /// A Session is open: it holds the User Dictionary's LevelDB lock
+        /// (probed), so management ops run before `startSession()`.
+        case sessionOpen
+        /// librime could not open the named User Dictionary for export —
+        /// it is missing, or another Engine (e.g. the keyboard's, mid-Session)
+        /// holds its lock. Nothing was written.
+        case exportFailed(String)
+        /// librime could not open the named User Dictionary for import —
+        /// same contention story as `exportFailed`.
+        case importFailed(String)
+    }
+
+    /// The levers API (user-dict management), reached through librime's
+    /// module registry: the levers entry points have internal linkage in
+    /// this static build, so `find_module("levers").get_api()` is the only
+    /// way in (probed).
+    private var levers: UnsafeMutablePointer<RimeLeversApi>? {
+        guard let module = api.find_module("levers"),
+              let custom = module.pointee.get_api() else { return nil }
+        return UnsafeMutableRawPointer(custom).assumingMemoryBound(to: RimeLeversApi.self)
+    }
+
     private static let startLock = NSLock()
     private static var didStart = false
 
@@ -301,6 +327,36 @@ final class Engine {
         _ = api.clear_composition(sessionID)
     }
 
+    /// Exports the named User Dictionary to `destination` as librime's TSV
+    /// dump (the levers `export_user_dict`) — the archive payload for Export
+    /// (ticket 15). Probed alternatives and why they lost:
+    /// `backup_user_dict` writes to a CWD-relative sync dir and rewrites
+    /// userdb metadata; `sync_user_data` fails outside a maintenance
+    /// context. Opens the dictionary read-only; fails cleanly (`exportFailed`)
+    /// when another Engine holds its lock. Runs with no Session open.
+    func exportUserDictionary(_ name: String, to destination: URL) throws {
+        guard running else { throw ManagementError.notRunning }
+        guard sessionID == 0 else { throw ManagementError.sessionOpen }
+        guard let levers else { throw ManagementError.exportFailed(name) }
+        let count = destination.path.withCString { levers.pointee.export_user_dict?(name, $0) } ?? -1
+        guard count >= 0 else { throw ManagementError.exportFailed(name) }
+    }
+
+    /// Imports a TSV dump into the named User Dictionary (the levers
+    /// `import_user_dict`), MERGING entries — librime's only restore
+    /// primitive that takes an explicit path (`restore_user_dict` needs the
+    /// sync-snapshot format `backup_user_dict` cannot place usefully).
+    /// Returns the number of entries imported. Runs with no Session open.
+    @discardableResult
+    func importUserDictionary(_ name: String, from source: URL) throws -> Int {
+        guard running else { throw ManagementError.notRunning }
+        guard sessionID == 0 else { throw ManagementError.sessionOpen }
+        guard let levers else { throw ManagementError.importFailed(name) }
+        let count = source.path.withCString { levers.pointee.import_user_dict?(name, $0) } ?? -1
+        guard count >= 0 else { throw ManagementError.importFailed(name) }
+        return Int(count)
+    }
+
     /// Destroys the Session and finalizes librime, releasing the Rime
     /// Directory (including the User Dictionary) for other Engines. A new
     /// Engine may start in this process afterwards.
@@ -326,6 +382,20 @@ extension Engine.DeployError: LocalizedError {
             return "librime refused to start the Deploy"
         case .schemasFailed(let schemas):
             return "no fresh artifacts for: \(schemas.joined(separator: ", "))"
+        }
+    }
+}
+
+extension Engine.ManagementError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .notRunning:
+            return "the Engine is shut down"
+        case .sessionOpen:
+            return "a Session is holding the User Dictionary"
+        case .exportFailed(let name), .importFailed(let name):
+            // The likeliest holder is the keyboard's long-lived Session.
+            return "\(name) is unavailable — the keyboard may be using it"
         }
     }
 }
