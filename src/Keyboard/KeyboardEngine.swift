@@ -1,10 +1,13 @@
 import Foundation
 
 /// The Keyboard Extension's process-wide Engine — one per process, as the
-/// Engine itself enforces. Runs read-only against the already-Deployed Rime
-/// Directory (Deploy is the Container App's job, ADR-0001). When the
-/// directory is not seeded yet the keyboard shows a setup hint instead of
-/// the typing UI.
+/// Engine itself enforces. It only runs input Sessions against the
+/// already-Deployed Rime Directory (Deploy is the Container App's job,
+/// ADR-0001). The User Dictionary persists only when the process can write
+/// the user side — with Full Access (ADR-0003); without it librime
+/// degrades read-only on its own (probed: learning silently off, no
+/// crash), so nothing here needs gating. When the directory is not seeded
+/// yet the keyboard shows a setup hint instead of the typing UI.
 enum KeyboardEngine {
     static let shared: Result<Engine, Error> = {
         do {

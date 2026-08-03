@@ -8,7 +8,11 @@ import Rime
 /// path — Session lifecycle, key events, reading Composition/Candidates,
 /// paging the Candidate list (ticket 13), Commit — plus in-Session Schema
 /// switching (ticket 12) and Deploy, which is Container App only
-/// (ADR-0001). No librime type crosses this interface.
+/// (ADR-0001). Learning into the User Dictionary happens inside librime on
+/// Commit; on a read-only Rime Directory (keyboard without Full Access,
+/// ADR-0003) librime degrades on its own — learning silently off, typing
+/// intact, no crash (probed) — so the Engine exposes no learning switch.
+/// No librime type crosses this interface.
 final class Engine {
     /// A key event delivered to the Session. `code` follows X11 keysym
     /// values (printable ASCII maps 1:1); `modifiers` is librime's mask.

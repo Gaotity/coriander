@@ -28,6 +28,23 @@ struct RimeDirectory: Equatable {
         FileManager.default.fileExists(atPath: seededMarker.path)
     }
 
+    /// Whether this process can write the user side of the Rime Directory —
+    /// the Keyboard Extension can only with Full Access (ticket 01, measured
+    /// on device). Probed with a real write: no API reports the sandbox
+    /// denial, it surfaces only on write. When false the Engine runs
+    /// read-only: librime itself degrades (userdb open fails, learning
+    /// silently off, no crash — probed), so this is a report, not a switch.
+    var canWriteUser: Bool {
+        let probe = user.appendingPathComponent(".\(UUID().uuidString)")
+        do {
+            try Data().write(to: probe)
+        } catch {
+            return false
+        }
+        try? FileManager.default.removeItem(at: probe)
+        return true
+    }
+
     /// When the last Deploy completed, per `user.yaml`'s `var/last_build_time`
     /// (written by librime's WorkspaceUpdate). The keyboard watches this to
     /// pick up artifacts Deployed by the Container App while it was warm.
