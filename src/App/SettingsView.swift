@@ -25,6 +25,10 @@ struct SettingsView: View {
                         KeyboardSettings().showsKeyPopup = newValue
                     }
             }
+            Section("About") {
+                // The onboarding privacy screen (ticket 18), re-viewable.
+                NavigationLink("Privacy") { PrivacyView() }
+            }
         }
         .navigationTitle("Settings")
     }
