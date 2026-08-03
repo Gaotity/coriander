@@ -11,7 +11,8 @@ import UIKit
 /// layer, shift with lowercase/uppercase/caps-lock states, and key-press
 /// popups — all derived proportionally per presentation: iPhone portrait,
 /// iPhone landscape, iPad full-size, and iPad floating (see
-/// `KeyboardLayout`). The 方案 key opens the schema menu, switching
+/// `KeyboardLayout`); the compact Layout choice (ticket 17) shrinks the
+/// rows. The 方案 key opens the schema menu, switching
 /// Schemas within the current Session. The keyboard is a pure forwarder —
 /// every key goes through `processKey` and Commits are drained from the
 /// Engine; key semantics (space selects first Candidate, Return commits
@@ -57,6 +58,7 @@ final class KeyboardViewController: UIInputViewController {
     private var symbolPointSize: CGFloat = 16
     private var laidOutWidth: CGFloat = 0
     private var laidOutBottomInset: CGFloat = 0
+    private var laidOutCompact = false
 
     /// Character keys use the native white keycaps that gray out while
     /// pressed; function keys sit one step darker and flip when pressed
@@ -98,17 +100,22 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let width = view.bounds.width
-        // The geometry depends on the width and the bottom safe-area inset
-        // (the home-indicator side moves when the device flips 180°); side
-        // insets are always zero for the keyboard window (probed) — like
-        // the native keyboard, rows span the full width in landscape.
+        // The geometry depends on the width, the bottom safe-area inset
+        // (the home-indicator side moves when the device flips 180°), and
+        // the compact Layout choice; side insets are always zero for the
+        // keyboard window (probed) — like the native keyboard, rows span
+        // the full width in landscape.
+        let compact = KeyboardSettings().keyboardHeight == .compact
         guard width > 0,
               width != laidOutWidth || view.safeAreaInsets.bottom != laidOutBottomInset
+                || compact != laidOutCompact
         else { return }
         laidOutWidth = width
         laidOutBottomInset = view.safeAreaInsets.bottom
+        laidOutCompact = compact
         let layout = KeyboardLayout(
-            width: width, form: layoutForm(width: width), portraitWidth: portraitWidth)
+            width: width, form: layoutForm(width: width), portraitWidth: portraitWidth,
+            compact: compact)
         stack.spacing = layout.rowGap
         qwertyLayer.spacing = layout.rowGap
         numbersLayer.spacing = layout.rowGap

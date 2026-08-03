@@ -10,6 +10,14 @@ import Foundation
 struct KeyboardSettings {
     private enum Key {
         static let showsKeyPopup = "keyboard.showsKeyPopup"
+        static let keyboardHeight = "keyboard.keyboardHeight"
+    }
+
+    /// The Layout choice for row height (ticket 17): standard matches the
+    /// iOS-native geometry; compact shrinks the rows for more screen room.
+    enum KeyboardHeight: String {
+        case standard
+        case compact
     }
 
     private let defaults: UserDefaults
@@ -26,5 +34,11 @@ struct KeyboardSettings {
         get { defaults.object(forKey: Key.showsKeyPopup) as? Bool ?? true }
         // Nonmutating: the struct only wraps a `UserDefaults` reference.
         nonmutating set { defaults.set(newValue, forKey: Key.showsKeyPopup) }
+    }
+
+    /// The chosen row height. Standard when unset.
+    var keyboardHeight: KeyboardHeight {
+        get { KeyboardHeight(rawValue: defaults.string(forKey: Key.keyboardHeight) ?? "") ?? .standard }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Key.keyboardHeight) }
     }
 }

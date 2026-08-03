@@ -169,26 +169,67 @@ final class Engine {
         guard failed.isEmpty else { throw DeployError.schemasFailed(failed) }
     }
 
-    /// Schema sources in `shared` that the Deploy did not successfully
-    /// rebuild: no compiled counterpart under `user/build`, or a counterpart
-    /// older than the source. librime preserves the previous artifact when
-    /// compilation fails (natural last-good), so a stale artifact is the
-    /// failure signal. Only schema files are covered — broken custom
-    /// patches are silently ignored by librime (probed) and cannot be
-    /// detected here, and dictionary-table failures are not detected. (The baseline keeps shared == schema_list; ticket 17
-    /// owns refining this once schemas can be disabled.)
+    /// Schemas the Deploy did not successfully rebuild: no compiled
+    /// counterpart under `user/build`, or a counterpart older than the
+    /// source. librime preserves the previous artifact when compilation
+    /// fails (natural last-good), so a stale artifact is the failure
+    /// signal. The checked set is exactly what librime compiled — the
+    /// schema_list of the DEPLOYED default config (`build/default.yaml`),
+    /// with each source resolved user-side first, mirroring librime
+    /// (ticket 17): scanning `shared` alone (ticket 10) missed a broken
+    /// schema arriving via the Config Folder, and would also flag a broken
+    /// source whose Schema is disabled (librime never compiles it). Only
+    /// schema files are covered — broken custom patches are silently
+    /// ignored by librime (probed) and cannot be detected here, and
+    /// dictionary-table failures are not detected. When the deployed
+    /// default config cannot be read, the check falls back to every
+    /// `*.schema.yaml` source on both sides.
     private func failedSchemas() -> [String] {
         let fm = FileManager.default
-        let sources = (try? fm.contentsOfDirectory(atPath: directory.shared.path)) ?? []
         let buildDir = directory.user.appendingPathComponent("build", isDirectory: true)
-        return sources
-            .filter { $0.hasSuffix(".schema.yaml") }
-            .filter { name in
-                guard let artifactDate = mtime(buildDir.appendingPathComponent(name)) else { return true }
-                guard let sourceDate = mtime(directory.shared.appendingPathComponent(name)) else { return false }
+        let ids = deployedSchemaIDs() ?? allSchemaSourceIDs()
+        return ids
+            .filter { id in
+                let userSide = directory.user.appendingPathComponent(id + ".schema.yaml")
+                let source = fm.fileExists(atPath: userSide.path)
+                    ? userSide
+                    : directory.shared.appendingPathComponent(id + ".schema.yaml")
+                guard let artifactDate = mtime(buildDir.appendingPathComponent(id + ".schema.yaml")) else { return true }
+                guard let sourceDate = mtime(source) else { return false }
                 return sourceDate > artifactDate
             }
+            .map { $0 + ".schema.yaml" }
             .sorted()
+    }
+
+    /// The schema_list ids of the deployed default config (written to
+    /// `build/default.yaml` by the Deploy); nil when it cannot be read.
+    private func deployedSchemaIDs() -> [String]? {
+        let deployed = directory.user.appendingPathComponent("build/default.yaml")
+        guard let text = try? String(contentsOf: deployed, encoding: .utf8) else { return nil }
+        let lines = text.components(separatedBy: .newlines)
+        guard let listIndex = lines.firstIndex(where: { $0.hasPrefix("schema_list:") }) else { return nil }
+        var ids: [String] = []
+        for line in lines[(listIndex + 1)...] {
+            guard let match = line.firstMatch(of: /^\s+-\s*schema\s*:\s*([^\s#]+)/) else {
+                if line.isEmpty { continue }
+                break
+            }
+            ids.append(String(match.1))
+        }
+        return ids
+    }
+
+    /// Fallback check set: stems of every `*.schema.yaml` source on both
+    /// sides of the Rime Directory.
+    private func allSchemaSourceIDs() -> [String] {
+        var ids = Set<String>()
+        for side in [directory.shared, directory.user] {
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: side.path)) ?? []
+            ids.formUnion(names.filter { $0.hasSuffix(".schema.yaml") }
+                .map { String($0.dropLast(".schema.yaml".count)) })
+        }
+        return ids.sorted()
     }
 
     private func mtime(_ url: URL) -> Date? {
