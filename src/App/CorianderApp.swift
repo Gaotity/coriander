@@ -2,8 +2,21 @@ import SwiftUI
 
 @main
 struct CorianderApp: App {
+    // First launch only (ticket 18): the guided enable-keyboard flow,
+    // privacy screen, and seed progress gate the main screen.
+    @State private var onboardingDone = OnboardingState().hasCompletedOnboarding
+
     var body: some Scene {
-        WindowGroup { ContentView() }
+        WindowGroup {
+            if onboardingDone {
+                ContentView()
+            } else {
+                OnboardingView {
+                    OnboardingState().hasCompletedOnboarding = true
+                    onboardingDone = true
+                }
+            }
+        }
     }
 }
 

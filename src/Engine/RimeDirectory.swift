@@ -77,14 +77,33 @@ struct RimeDirectory: Equatable {
     /// Copies the vendored baseline into `shared`, replacing any partial
     /// earlier copy, and ensures `user` exists. Does not mark the directory
     /// seeded — that happens only after the Deploy over this copy succeeds.
-    func seed(from baseline: URL) throws {
+    /// Copies file by file and reports `progress(copied, total)` after each
+    /// file so first launch can show real seed progress (ticket 18).
+    func seed(from baseline: URL, progress: ((Int, Int) -> Void)? = nil) throws {
         let fm = FileManager.default
         if fm.fileExists(atPath: shared.path) {
             try fm.removeItem(at: shared)
         }
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
-        try fm.copyItem(at: baseline, to: shared)
+        try fm.createDirectory(at: shared, withIntermediateDirectories: true)
         try fm.createDirectory(at: user, withIntermediateDirectories: true)
+
+        // Resolve symlinks on both sides before relative-path arithmetic,
+        // as in ConfigFolder.sync (/var vs /private/var on device).
+        let basePath = baseline.resolvingSymlinksInPath().path
+        var files: [URL] = []
+        let enumerator = fm.enumerator(at: baseline, includingPropertiesForKeys: [.isRegularFileKey])
+        while let file = enumerator?.nextObject() as? URL {
+            guard try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else { continue }
+            files.append(file)
+        }
+        for (copied, file) in files.enumerated() {
+            let relative = String(file.resolvingSymlinksInPath().path.dropFirst(basePath.count + 1))
+            let target = shared.appendingPathComponent(relative)
+            try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try fm.copyItem(at: file, to: target)
+            progress?(copied + 1, files.count)
+        }
     }
 
     /// Records that seeding plus its first Deploy completed.

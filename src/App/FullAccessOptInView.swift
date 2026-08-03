@@ -4,7 +4,8 @@ import UIKit
 /// The Full Access opt-in screen (ticket 14, ADR-0003): the keyboard types
 /// without Full Access; opting in lets it persist the User Dictionary, and
 /// the permission is used solely for those local writes — neither process
-/// ever uses the network. The full onboarding/privacy flow is ticket 18.
+/// ever uses the network. Onboarding (ticket 18) presents the same
+/// explanation before its Full Access step.
 struct FullAccessOptInView: View {
     var body: some View {
         ScrollView {
