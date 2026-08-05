@@ -1,7 +1,7 @@
 # Ticket 11 — CI pipeline.
 # Frugal by design: the XCFramework is cached keyed by the pinned librime
 # version and the build scripts (rebuilt only when they change), and only
-# code-path changes trigger a run — docs-only changes do not.
+# code or CI configuration changes trigger a run — docs-only changes do not.
 name: CI
 
 on:
@@ -14,7 +14,9 @@ on:
       - 'project.yml'
       - '.github/workflows/**'
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'trunk-merge/**'
     paths:
       - 'src/**'
       - 'tests/**'
@@ -22,6 +24,7 @@ on:
       - 'scripts/**'
       - 'project.yml'
       - '.github/workflows/**'
+      - '.trunk/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
