@@ -23,6 +23,12 @@ import Foundation
 /// semantics keep the holder's handles valid (probed) — it keeps typing on
 /// its unlinked copy, its last writes vanish with it, and the next Engine
 /// starts over empty. No crash, no partial dictionary, no corruption.
+///
+/// Clear and Restore change the store underneath a warm keyboard, whose
+/// live Session keeps serving its open handles. Callers follow a
+/// successful Clear/Restore with a `KeyboardSettings.userDictionaryGeneration`
+/// bump (ENG-69) so the keyboard restarts its Session on its next
+/// appearance instead of serving the stale store until iOS reaps it.
 enum UserDictionary {
     /// File name prefix for export archives in Files-visible storage.
     static let archivePrefix = "coriander-userdict"
@@ -93,8 +99,7 @@ enum UserDictionary {
 
     /// Clears every User Dictionary by removing its `*.userdb` directory,
     /// returning the cleared names. Safe against a live writer (see the
-    /// type comment); the keyboard keeps typing and starts over empty on
-    /// its next Engine.
+    /// type comment); the keyboard starts over empty on its next Session.
     @discardableResult
     static func clear(directory: RimeDirectory) throws -> [String] {
         let fm = FileManager.default

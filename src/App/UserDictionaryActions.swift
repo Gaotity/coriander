@@ -28,7 +28,8 @@ enum UserDictionaryActions {
         }
         do {
             let restored = try UserDictionary.restore(archive: archive, into: directory)
-            return "Restored \(restored.joined(separator: ", ")) from \(archive.lastPathComponent) — the keyboard picks it up on its next Session"
+            bumpUserDictionaryGeneration()
+            return "Restored \(restored.joined(separator: ", ")) from \(archive.lastPathComponent) — the keyboard picks it up on its next appearance"
         } catch {
             return "Restore failed: \(error.localizedDescription)"
         }
@@ -41,10 +42,19 @@ enum UserDictionaryActions {
         do {
             let cleared = try UserDictionary.clear(directory: directory)
             guard !cleared.isEmpty else { return "Nothing to clear" }
-            return "Cleared \(cleared.joined(separator: ", ")) — the keyboard starts learning over"
+            bumpUserDictionaryGeneration()
+            return "Cleared \(cleared.joined(separator: ", ")) — the keyboard starts learning over on its next appearance"
         } catch {
             return "Clear failed: \(error.localizedDescription)"
         }
+    }
+
+    /// Signals the keyboard that the User Dictionary's contents changed
+    /// underneath it (ENG-69). Bumped only after the change succeeded: a
+    /// keyboard appearing between the file work and the write would
+    /// otherwise restart its Session onto the not-yet-changed store.
+    private static func bumpUserDictionaryGeneration() {
+        KeyboardSettings().userDictionaryGeneration += 1
     }
 
     private static func documents() -> URL {

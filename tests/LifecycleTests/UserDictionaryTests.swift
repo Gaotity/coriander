@@ -155,6 +155,49 @@ final class UserDictionaryTests: XCTestCase {
         XCTAssertTrue(fresh.input.candidates.contains(where: { $0.text == "你好" }))
     }
 
+    /// ENG-69 regression: a Clear landing under a live Session (the warm
+    /// keyboard process) must take effect on a SESSION RESTART — the
+    /// keyboard's response to the generation bump on its next appearance —
+    /// not minutes later when iOS reaps the process. The first half pins
+    /// the bug shape (POSIX unlink keeps the holder serving its store); the
+    /// second half pins that a same-Engine Session restart reopens the
+    /// cleared store, learning resumes, and the re-learned word exports.
+    func testClearUnderLiveSessionTakesEffectOnSessionRestart() throws {
+        let directory = try Self.makeDirectory("clearrestart")
+        defer { Self.remove(directory) }
+        try Self.deploy(directory)
+        let engine = try Engine(directory: directory)
+        try Self.learn(Self.input, picking: ["諾", "吐"], expect: Self.coined, into: engine)
+
+        // The warm keyboard: one Session spanning the Clear.
+        XCTAssertTrue(engine.startSession())
+        XCTAssertEqual(try UserDictionary.clear(directory: directory), ["luna_pinyin"])
+        try Self.type(Self.input, into: engine)
+        XCTAssertEqual(engine.input.candidates.first?.text, Self.coined,
+                       "the live Session should still serve its unlinked store")
+        engine.clearComposition()
+
+        // What the keyboard does when the generation bridge changes.
+        engine.endSession()
+        XCTAssertTrue(engine.startSession())
+        try Self.type(Self.input, into: engine)
+        XCTAssertNotEqual(engine.input.candidates.first?.text, Self.coined,
+                          "cleared word survived the Session restart")
+        engine.endSession()
+
+        // Learning resumes into the fresh store and exports normally.
+        try Self.learn(Self.input, picking: ["諾", "吐"], expect: Self.coined, into: engine)
+        engine.shutdown()
+
+        let folder = try Self.makeFolder("exports")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let archive = try UserDictionary.export(directory: directory, into: folder)
+        let entries = try ZipArchive.readEntries(from: archive)
+        let dump = try XCTUnwrap(entries.first?.data)
+        XCTAssertTrue(String(decoding: dump, as: UTF8.self).contains(Self.coined),
+                      "re-learned word missing from the export")
+    }
+
     /// Single-writer, export/restore half: with the user side read-only
     /// (the app-side shape when the keyboard holds the LevelDB lock), the
     /// ops fail cleanly — an honest error, no partial archive.

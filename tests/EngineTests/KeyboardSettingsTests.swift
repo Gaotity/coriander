@@ -48,4 +48,13 @@ final class KeyboardSettingsTests: XCTestCase {
         KeyboardSettings(defaults: makeDefaults()).keyboardHeight = .standard
         XCTAssertEqual(KeyboardSettings(defaults: makeDefaults()).keyboardHeight, .standard)
     }
+
+    func testUserDictionaryGenerationDefaultsToZeroWhenUnset() {
+        XCTAssertEqual(KeyboardSettings(defaults: makeDefaults()).userDictionaryGeneration, 0)
+    }
+
+    func testUserDictionaryGenerationRoundTrips() {
+        KeyboardSettings(defaults: makeDefaults()).userDictionaryGeneration = 3
+        XCTAssertEqual(KeyboardSettings(defaults: makeDefaults()).userDictionaryGeneration, 3)
+    }
 }
