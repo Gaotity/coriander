@@ -76,9 +76,11 @@ final class KeyboardViewController: UIInputViewController {
         if case .success(let engine) = KeyboardEngine.shared {
             self.engine = engine
             // True only when this call actually creates the Session — a
-            // no-op for an existing one, whose build time must be left alone.
+            // no-op for an existing one, whose snapshots must be left alone.
             if engine.startSession() {
                 KeyboardEngine.sessionBuiltAt = RimeDirectory.appGroup()?.lastDeployTime
+                KeyboardEngine.sessionDictionaryGeneration =
+                    KeyboardSettings().userDictionaryGeneration
             }
         } else {
             showSetupHint()
@@ -94,6 +96,7 @@ final class KeyboardViewController: UIInputViewController {
         shiftState = .lowercase
         applySettings()
         reloadSessionIfDeployed()
+        reloadSessionIfDictionaryChanged()
         refresh()
     }
 
@@ -154,6 +157,24 @@ final class KeyboardViewController: UIInputViewController {
         engine.endSession()
         if engine.startSession() {
             KeyboardEngine.sessionBuiltAt = current
+        }
+    }
+
+    /// Picks up a User Dictionary Clear/Restore that landed while this
+    /// keyboard process was warm (ENG-69): the live Session keeps serving
+    /// the store it holds open (POSIX unlink, probed in ticket 15), so the
+    /// Container App bumps the generation in the settings bridge and the
+    /// next presentation restarts the Session — the fresh Session reopens
+    /// the store and sees the cleared/restored state. The check is one App
+    /// Group defaults read per presentation; the keystroke path pays
+    /// nothing.
+    private func reloadSessionIfDictionaryChanged() {
+        guard let engine else { return }
+        let generation = KeyboardSettings().userDictionaryGeneration
+        guard generation != KeyboardEngine.sessionDictionaryGeneration else { return }
+        engine.endSession()
+        if engine.startSession() {
+            KeyboardEngine.sessionDictionaryGeneration = generation
         }
     }
 

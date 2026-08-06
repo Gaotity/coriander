@@ -5,12 +5,14 @@ import Foundation
 /// `UserDefaults`, per the spec's Settings decision — Rime-layer settings
 /// (schema enable/order) travel via the Config Folder + Deploy instead.
 /// The Container App writes; the keyboard re-reads on each presentation,
-/// so a change applies without a Session restart. Reading App Group
-/// defaults needs no Full Access.
+/// so a change applies without a Session restart. The same bridge carries
+/// the User Dictionary generation (ENG-69), which the keyboard answers
+/// WITH a Session restart. Reading App Group defaults needs no Full Access.
 struct KeyboardSettings {
     private enum Key {
         static let showsKeyPopup = "keyboard.showsKeyPopup"
         static let keyboardHeight = "keyboard.keyboardHeight"
+        static let userDictionaryGeneration = "keyboard.userDictionaryGeneration"
     }
 
     /// The Layout choice for row height (ticket 17): standard matches the
@@ -40,5 +42,17 @@ struct KeyboardSettings {
     var keyboardHeight: KeyboardHeight {
         get { KeyboardHeight(rawValue: defaults.string(forKey: Key.keyboardHeight) ?? "") ?? .standard }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Key.keyboardHeight) }
+    }
+
+    /// Content generation of the User Dictionary (ENG-69): the Container
+    /// App's Clear and Restore bump it AFTER the file/levers work succeeds;
+    /// the keyboard snapshots it per Session and restarts the Session when
+    /// it changes, so a Clear takes effect on the keyboard's next
+    /// presentation instead of whenever iOS reaps the warm process. Zero
+    /// when unset — both sides start at zero, so upgrading users see no
+    /// spurious restart.
+    var userDictionaryGeneration: Int {
+        get { defaults.integer(forKey: Key.userDictionaryGeneration) }
+        nonmutating set { defaults.set(newValue, forKey: Key.userDictionaryGeneration) }
     }
 }

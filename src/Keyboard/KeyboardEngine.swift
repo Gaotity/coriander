@@ -25,6 +25,13 @@ enum KeyboardEngine {
     /// so snapshotting this in a controller would mask staleness.
     static var sessionBuiltAt: Date?
 
+    /// The User Dictionary generation (settings bridge) the current Session
+    /// opened the store at. Same process-wide reasoning as
+    /// `sessionBuiltAt`: a Clear/Restore landing while this process is warm
+    /// is invisible to the live Session (POSIX unlink, probed in ticket 15),
+    /// so the next presentation compares and restarts (ENG-69).
+    static var sessionDictionaryGeneration: Int?
+
     enum SetupError: Error {
         /// The Container App has not completed its first-launch seed + Deploy.
         case rimeDirectoryNotSeeded
